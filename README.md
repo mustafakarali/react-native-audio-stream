@@ -32,9 +32,9 @@ A comprehensive React Native audio streaming library with real-time playback sup
 ## Installation
 
 ```bash
-npm install react-native-audio-stream
+npm install @mustafakarali/react-native-audio-stream
 # or
-yarn add react-native-audio-stream
+yarn add @mustafakarali/react-native-audio-stream
 ```
 
 ### iOS Setup
@@ -59,7 +59,7 @@ The library automatically handles Android configuration. However, ensure your `m
 ## Quick Start
 
 ```typescript
-import AudioStream from 'react-native-audio-stream';
+import AudioStream from '@mustafakarali/react-native-audio-stream';
 
 // Initialize the audio stream
 await AudioStream.initialize({
@@ -316,7 +316,7 @@ interface PlaybackStats {
 ```typescript
 import React, { useEffect, useState } from 'react';
 import { View, Button, Text } from 'react-native';
-import AudioStream, { PlaybackState } from 'react-native-audio-stream';
+import AudioStream, { PlaybackState } from '@mustafakarali/react-native-audio-stream';
 
 export default function AudioPlayer() {
   const [state, setState] = useState<PlaybackState>(PlaybackState.IDLE);

@@ -1,9 +1,18 @@
 import { LogLevel } from './types';
 
+// TypeScript için console.time ve console.timeEnd fonksiyonlarını tanımla
+declare global {
+  interface Console {
+    time(label?: string): void;
+    timeEnd(label?: string): void;
+  }
+}
+
 export class Logger {
   private static instance: Logger;
   private logLevel: LogLevel = LogLevel.WARNING;
   private tag = 'AudioStream';
+  private timeLabels: Map<string, number> = new Map();
 
   private constructor() {}
 
@@ -65,13 +74,31 @@ export class Logger {
   // Performance logging
   time(label: string): void {
     if (this.shouldLog(LogLevel.DEBUG)) {
-      console.time(`[${this.tag}] ${label}`);
+      const tagLabel = `[${this.tag}] ${label}`;
+      if (typeof console.time === 'function') {
+        console.time(tagLabel);
+      } else {
+        this.timeLabels.set(tagLabel, Date.now());
+        this.debug(`Timer started: ${tagLabel}`);
+      }
     }
   }
 
   timeEnd(label: string): void {
     if (this.shouldLog(LogLevel.DEBUG)) {
-      console.timeEnd(`[${this.tag}] ${label}`);
+      const tagLabel = `[${this.tag}] ${label}`;
+      if (typeof console.timeEnd === 'function') {
+        console.timeEnd(tagLabel);
+      } else {
+        const start = this.timeLabels.get(tagLabel);
+        if (start) {
+          const duration = Date.now() - start;
+          this.debug(`Timer ended: ${tagLabel} - ${duration}ms`);
+          this.timeLabels.delete(tagLabel);
+        } else {
+          this.debug(`Timer not found: ${tagLabel}`);
+        }
+      }
     }
   }
 
