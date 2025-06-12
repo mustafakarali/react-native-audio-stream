@@ -1,0 +1,44 @@
+# Source files (only ship compiled)
+src/
+tsconfig.json
+tsconfig.build.json
+
+# Example
+example/
+
+# Docs
+docs/
+
+# Config files
+.eslintrc.js
+.prettierrc.js
+jest.config.js
+jest.setup.js
+babel.config.js
+.release-it.json
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+android/build/
+ios/build/
+*.log
+
+# Testing
+coverage/
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx 
