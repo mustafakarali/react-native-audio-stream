@@ -26,7 +26,6 @@ import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.Timeline;
 import com.google.android.exoplayer2.ext.okhttp.OkHttpDataSource;
 import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
@@ -72,6 +71,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     private long totalBytesReceived = 0;
     private long bufferStartTime = 0;
     private DefaultBandwidthMeter bandwidthMeter;
+    private AudioFocusRequest audioFocusRequest; // Store for later abandon
 
     // Playback states
     private enum PlaybackState {
@@ -610,7 +610,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
                         .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build();
-                AudioFocusRequest focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                         .setAudioAttributes(playbackAttributes)
                         .setAcceptsDelayedFocusGain(true)
                         .setOnAudioFocusChangeListener(new AudioManager.OnAudioFocusChangeListener() {
@@ -620,7 +620,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                             }
                         })
                         .build();
-                result = audioManager.requestAudioFocus(focusRequest);
+                result = audioManager.requestAudioFocus(audioFocusRequest);
             } else {
                 result = audioManager.requestAudioFocus(
                     null,
@@ -640,8 +640,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 // For API 26+, we should use the same AudioFocusRequest used to request focus
-                // For simplicity, we're using abandonAudioFocus() without parameters
-                audioManager.abandonAudioFocus(null);
+                audioManager.abandonAudioFocus(audioFocusRequest);
             } else {
                 audioManager.abandonAudioFocus(null);
             }
