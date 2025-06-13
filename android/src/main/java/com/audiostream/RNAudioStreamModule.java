@@ -28,7 +28,6 @@ import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.Timeline;
-import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.ext.okhttp.OkHttpDataSource;
 import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
 import com.google.android.exoplayer2.source.MediaSource;
@@ -174,9 +173,9 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     .build();
 
             // Setup audio attributes
-            AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            com.google.android.exoplayer2.audio.AudioAttributes audioAttributes = new com.google.android.exoplayer2.audio.AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .build();
             
             player.setAudioAttributes(audioAttributes, true);
@@ -532,7 +531,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                 }
             }
             
-            promise.resolve(metadata.getKeys().size() > 0 ? metadata : null);
+            promise.resolve(metadata);
         } catch (Exception e) {
             Log.e(TAG, "Failed to get metadata", e);
             promise.reject("METADATA_ERROR", "Failed to get metadata", e);
@@ -607,9 +606,9 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
         try {
             int result;
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                AudioAttributes playbackAttributes = new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                android.media.AudioAttributes playbackAttributes = new android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build();
                 AudioFocusRequest focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                         .setAudioAttributes(playbackAttributes)
@@ -818,6 +817,11 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
             }
 
             @Override
+            public void reject(String code, Throwable throwable, WritableMap userInfo) {
+                // Ignore errors for stats
+            }
+
+            @Override
             public void reject(String code, String message, Throwable throwable, WritableMap userInfo) {
                 // Ignore errors for stats
             }
@@ -867,6 +871,11 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
 
             @Override
             public void reject(String code, String message, WritableMap userInfo) {
+                // Ignore errors for metadata
+            }
+
+            @Override
+            public void reject(String code, Throwable throwable, WritableMap userInfo) {
                 // Ignore errors for metadata
             }
 
