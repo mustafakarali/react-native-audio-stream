@@ -16,6 +16,7 @@ def safeExtGet(prop, fallback) {
 }
 
 android {
+    namespace 'com.audiostream'
     compileSdkVersion safeExtGet('compileSdkVersion', 34)
     buildToolsVersion safeExtGet('buildToolsVersion', '34.0.0')
 
