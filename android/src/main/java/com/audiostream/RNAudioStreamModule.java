@@ -639,8 +639,10 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     public void abandonAudioFocus(Promise promise) {
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                // For API 26+, we should use the same AudioFocusRequest used to request focus
-                audioManager.abandonAudioFocus(audioFocusRequest);
+                // For API 26+, use abandonAudioFocusRequest
+                if (audioFocusRequest != null) {
+                    audioManager.abandonAudioFocusRequest(audioFocusRequest);
+                }
             } else {
                 audioManager.abandonAudioFocus(null);
             }
