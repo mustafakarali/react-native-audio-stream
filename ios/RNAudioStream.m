@@ -36,6 +36,7 @@ typedef NS_ENUM(NSInteger, PlaybackState) {
 @property (nonatomic, strong) NSURLSessionDataTask *dataTask;
 @property (nonatomic, strong) NSCache *audioCache;
 @property (nonatomic, strong) NSString *cachePath;
+@property (nonatomic, assign) BOOL hasObservers;
 
 @end
 
@@ -172,11 +173,13 @@ RCT_EXPORT_METHOD(initialize:(NSDictionary *)config
         self.audioSession = [AVAudioSession sharedInstance];
         NSError *error = nil;
         
-        NSString *category = AVAudioSessionCategoryPlayback;
+        AVAudioSessionCategory category = AVAudioSessionCategoryPlayback;
         AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
         
         if ([config[@"enableBackgroundMode"] boolValue]) {
             options |= AVAudioSessionCategoryOptionAllowAirPlay;
+            options |= AVAudioSessionCategoryOptionAllowBluetooth;
+            options |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
         }
         
         [self.audioSession setCategory:category
@@ -335,6 +338,8 @@ RCT_EXPORT_METHOD(startStream:(NSString *)url
                           forKeyPath:@"playbackLikelyToKeepUp"
                              options:NSKeyValueObservingOptionNew
                              context:nil];
+        
+        self.hasObservers = YES;
         
         // Create player
         self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
@@ -779,10 +784,15 @@ RCT_EXPORT_METHOD(setAudioSessionCategory:(NSString *)category
     [self.dataTask cancel];
     self.dataTask = nil;
     
-    if (self.playerItem) {
-        [self.playerItem removeObserver:self forKeyPath:@"status"];
-        [self.playerItem removeObserver:self forKeyPath:@"playbackBufferEmpty"];
-        [self.playerItem removeObserver:self forKeyPath:@"playbackLikelyToKeepUp"];
+    if (self.playerItem && self.hasObservers) {
+        @try {
+            [self.playerItem removeObserver:self forKeyPath:@"status"];
+            [self.playerItem removeObserver:self forKeyPath:@"playbackBufferEmpty"];
+            [self.playerItem removeObserver:self forKeyPath:@"playbackLikelyToKeepUp"];
+        } @catch (NSException *exception) {
+            // Ignore if observer was already removed
+        }
+        self.hasObservers = NO;
     }
     
     [self.player pause];
@@ -872,6 +882,24 @@ RCT_EXPORT_METHOD(setAudioSessionCategory:(NSString *)category
     NSURL *fileURL = [NSURL fileURLWithPath:tempPath];
     AVAsset *asset = [AVAsset assetWithURL:fileURL];
     self.playerItem = [AVPlayerItem playerItemWithAsset:asset];
+    
+    // Add observers
+    [self.playerItem addObserver:self
+                      forKeyPath:@"status"
+                         options:NSKeyValueObservingOptionNew
+                         context:nil];
+    
+    [self.playerItem addObserver:self
+                      forKeyPath:@"playbackBufferEmpty"
+                         options:NSKeyValueObservingOptionNew
+                         context:nil];
+    
+    [self.playerItem addObserver:self
+                      forKeyPath:@"playbackLikelyToKeepUp"
+                         options:NSKeyValueObservingOptionNew
+                         context:nil];
+    
+    self.hasObservers = YES;
     
     self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
     

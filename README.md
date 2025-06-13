@@ -52,6 +52,8 @@ Add the following to your `Info.plist`:
 </array>
 ```
 
+**[📖 View Detailed iOS Setup Guide](./docs/IOS_SETUP.md)** - Includes troubleshooting, performance tips, and common issues.
+
 ### Android Setup
 
 The library automatically handles Android configuration. However, ensure your `minSdkVersion` is at least 21 in `android/build.gradle`.
