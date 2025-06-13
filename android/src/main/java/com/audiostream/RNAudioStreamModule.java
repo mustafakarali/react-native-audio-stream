@@ -830,6 +830,11 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
             public void reject(String message) {
                 // Ignore errors for stats
             }
+
+            @Override
+            public void reject(Throwable throwable, WritableMap userInfo) {
+                // Ignore errors for stats
+            }
         });
     }
 
@@ -886,6 +891,11 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
 
             @Override
             public void reject(String message) {
+                // Ignore errors for metadata
+            }
+
+            @Override
+            public void reject(Throwable throwable, WritableMap userInfo) {
                 // Ignore errors for metadata
             }
         });
