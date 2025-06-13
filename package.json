@@ -133,5 +133,13 @@
         }
       ]
     ]
+  },
+  "codegenConfig": {
+    "name": "RNAudioStreamSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.audiostream"
+    }
   }
 }

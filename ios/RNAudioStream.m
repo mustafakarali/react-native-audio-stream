@@ -491,7 +491,8 @@ RCT_EXPORT_METHOD(getCurrentTime:(RCTPromiseResolveBlock)resolve
     @try {
         double currentTime = 0;
         if (self.player && self.player.currentItem) {
-            currentTime = CMTimeGetSeconds(self.player.currentTime);
+            CMTime time = self.player.currentTime;
+            currentTime = CMTIME_IS_VALID(time) ? CMTimeGetSeconds(time) : 0;
         }
         resolve(@(currentTime));
     } @catch (NSException *exception) {
@@ -505,7 +506,8 @@ RCT_EXPORT_METHOD(getDuration:(RCTPromiseResolveBlock)resolve
     @try {
         double duration = 0;
         if (self.player && self.player.currentItem) {
-            duration = CMTimeGetSeconds(self.player.currentItem.duration);
+            CMTime time = self.player.currentItem.duration;
+            duration = CMTIME_IS_VALID(time) && !CMTIME_IS_INDEFINITE(time) ? CMTimeGetSeconds(time) : 0;
         }
         resolve(@(duration));
     } @catch (NSException *exception) {
@@ -522,9 +524,10 @@ RCT_EXPORT_METHOD(getBufferedPercentage:(RCTPromiseResolveBlock)resolve
             NSArray *loadedTimeRanges = self.player.currentItem.loadedTimeRanges;
             if (loadedTimeRanges.count > 0) {
                 CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
-                double startSeconds = CMTimeGetSeconds(timeRange.start);
-                double durationSeconds = CMTimeGetSeconds(timeRange.duration);
-                double totalDuration = CMTimeGetSeconds(self.player.currentItem.duration);
+                double startSeconds = CMTIME_IS_VALID(timeRange.start) ? CMTimeGetSeconds(timeRange.start) : 0;
+                double durationSeconds = CMTIME_IS_VALID(timeRange.duration) ? CMTimeGetSeconds(timeRange.duration) : 0;
+                CMTime totalTime = self.player.currentItem.duration;
+                double totalDuration = CMTIME_IS_VALID(totalTime) && !CMTIME_IS_INDEFINITE(totalTime) ? CMTimeGetSeconds(totalTime) : 0;
                 
                 if (totalDuration > 0) {
                     percentage = ((startSeconds + durationSeconds) / totalDuration) * 100;
@@ -549,12 +552,16 @@ RCT_EXPORT_METHOD(getStats:(RCTPromiseResolveBlock)resolve
             double bufferedDuration = 0;
             if (loadedTimeRanges.count > 0) {
                 CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
-                bufferedDuration = CMTimeGetSeconds(timeRange.duration);
+                if (CMTIME_IS_VALID(timeRange.duration)) {
+                    bufferedDuration = CMTimeGetSeconds(timeRange.duration);
+                }
             }
             
             // Current and total duration
-            double currentTime = CMTimeGetSeconds(self.player.currentTime);
-            double totalDuration = CMTimeGetSeconds(self.player.currentItem.duration);
+            CMTime currentTimeValue = self.player.currentTime;
+            double currentTime = CMTIME_IS_VALID(currentTimeValue) ? CMTimeGetSeconds(currentTimeValue) : 0;
+            CMTime totalTimeValue = self.player.currentItem.duration;
+            double totalDuration = CMTIME_IS_VALID(totalTimeValue) && !CMTIME_IS_INDEFINITE(totalTimeValue) ? CMTimeGetSeconds(totalTimeValue) : 0;
             
             // Network speed calculation
             NSTimeInterval elapsed = [[NSDate date] timeIntervalSince1970] - self.bufferStartTime;
@@ -611,9 +618,12 @@ RCT_EXPORT_METHOD(getMetadata:(RCTPromiseResolveBlock)resolve
                 }
             }
             
-            double duration = CMTimeGetSeconds(asset.duration);
-            if (duration > 0) {
-                metadata[@"duration"] = @(duration);
+            CMTime durationValue = asset.duration;
+            if (CMTIME_IS_VALID(durationValue) && !CMTIME_IS_INDEFINITE(durationValue)) {
+                double duration = CMTimeGetSeconds(durationValue);
+                if (duration > 0) {
+                    metadata[@"duration"] = @(duration);
+                }
             }
         }
         
@@ -848,8 +858,10 @@ RCT_EXPORT_METHOD(setAudioSessionCategory:(NSString *)category
 - (void)updateProgress
 {
     if (self.player && self.player.currentItem) {
-        double currentTime = CMTimeGetSeconds(self.player.currentTime);
-        double duration = CMTimeGetSeconds(self.player.currentItem.duration);
+        CMTime currentTimeValue = self.player.currentTime;
+        CMTime durationValue = self.player.currentItem.duration;
+        double currentTime = CMTIME_IS_VALID(currentTimeValue) ? CMTimeGetSeconds(currentTimeValue) : 0;
+        double duration = CMTIME_IS_VALID(durationValue) && !CMTIME_IS_INDEFINITE(durationValue) ? CMTimeGetSeconds(durationValue) : 0;
         double percentage = duration > 0 ? (currentTime / duration) * 100 : 0;
         
         [self sendEventWithName:@"onStreamProgress" body:@{
