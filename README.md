@@ -362,6 +362,32 @@ export default function AudioPlayer() {
 }
 ```
 
+## Examples and Demos
+
+### 🎯 Interactive Buffer Demo
+We've created a comprehensive demo app that showcases all features with real-time buffer visualization.
+
+**[📁 View Buffer Demo Source Code](./examples/BufferDemo/)**
+
+Features demonstrated:
+- Real-time buffer visualization with animated progress bars
+- Stream health monitoring (network speed, buffer health, latency)
+- Multiple working stream URLs for testing
+- Playback controls with seeking capability
+- Volume control with slider
+- Metadata display (artist, title, album)
+- Cache management tools
+- Comprehensive error handling
+
+**[📖 View More Examples](./docs/EXAMPLES.md)** - Contains additional code examples for:
+- Simple audio player
+- Progress tracking
+- Buffer monitoring
+- Metadata display
+- Error handling
+- Stream statistics
+- And more...
+
 ## Advanced Usage
 
 ### Custom HTTP Headers
@@ -454,9 +480,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Support
 
-- 📧 Email: support@example.com
-- 💬 Discord: [Join our community](https://discord.gg/example)
-- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/react-native-audio-stream/issues)
+- 📧 Email: mustafa@birharika.com
+- 🐛 Issues: [GitHub Issues](https://github.com/mustafakarali/react-native-audio-stream/issues)
 
 ## Acknowledgments
 
