@@ -761,80 +761,84 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     }
 
     private void updateProgress() {
-        if (player != null) {
-            double currentTime = player.getCurrentPosition() / 1000.0;
-            double duration = player.getDuration() != C.TIME_UNSET ? player.getDuration() / 1000.0 : 0;
-            double percentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+        mainHandler.post(() -> {
+            if (player != null) {
+                double currentTime = player.getCurrentPosition() / 1000.0;
+                double duration = player.getDuration() != C.TIME_UNSET ? player.getDuration() / 1000.0 : 0;
+                double percentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-            WritableMap params = Arguments.createMap();
-            params.putDouble("currentTime", currentTime);
-            params.putDouble("duration", duration);
-            params.putDouble("percentage", percentage);
+                WritableMap params = Arguments.createMap();
+                params.putDouble("currentTime", currentTime);
+                params.putDouble("duration", duration);
+                params.putDouble("percentage", percentage);
 
-            sendEvent("onStreamProgress", params);
-        }
+                sendEvent("onStreamProgress", params);
+            }
+        });
     }
 
     private void updateStats() {
-        getStats(new Promise() {
-            @Override
-            public void resolve(@Nullable Object value) {
-                if (value instanceof WritableMap) {
-                    WritableMap params = Arguments.createMap();
-                    params.putMap("stats", (WritableMap) value);
-                    sendEvent("onStreamStats", params);
+        mainHandler.post(() -> {
+            getStats(new Promise() {
+                @Override
+                public void resolve(@Nullable Object value) {
+                    if (value instanceof WritableMap) {
+                        WritableMap params = Arguments.createMap();
+                        params.putMap("stats", (WritableMap) value);
+                        sendEvent("onStreamStats", params);
+                    }
                 }
-            }
 
-            @Override
-            public void reject(String code, String message) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(String code, String message) {
+                    // Ignore errors for stats
+                }
 
-            @Override
-            public void reject(String code, Throwable throwable) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(String code, Throwable throwable) {
+                    // Ignore errors for stats
+                }
 
-            @Override
-            public void reject(String code, String message, Throwable throwable) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(String code, String message, Throwable throwable) {
+                    // Ignore errors for stats
+                }
 
-            @Override
-            public void reject(Throwable throwable) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(Throwable throwable) {
+                    // Ignore errors for stats
+                }
 
-            @Override
-            public void reject(String code, WritableMap userInfo) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(String code, WritableMap userInfo) {
+                    // Ignore errors for stats
+                }
 
-            @Override
-            public void reject(String code, String message, WritableMap userInfo) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(String code, String message, WritableMap userInfo) {
+                    // Ignore errors for stats
+                }
 
-            @Override
-            public void reject(String code, Throwable throwable, WritableMap userInfo) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(String code, Throwable throwable, WritableMap userInfo) {
+                    // Ignore errors for stats
+                }
 
-            @Override
-            public void reject(String code, String message, Throwable throwable, WritableMap userInfo) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(String code, String message, Throwable throwable, WritableMap userInfo) {
+                    // Ignore errors for stats
+                }
 
-            @Override
-            public void reject(String message) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(String message) {
+                    // Ignore errors for stats
+                }
 
-            @Override
-            public void reject(Throwable throwable, WritableMap userInfo) {
-                // Ignore errors for stats
-            }
+                @Override
+                public void reject(Throwable throwable, WritableMap userInfo) {
+                    // Ignore errors for stats
+                }
+            });
         });
     }
 
