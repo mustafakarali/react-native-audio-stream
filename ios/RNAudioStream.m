@@ -605,16 +605,14 @@ RCT_EXPORT_METHOD(getBufferedPercentage:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        double percentage = 0;
+        NSInteger percentage = 0;
         if (self.player && self.player.currentItem) {
-            NSArray *loadedTimeRanges = self.player.currentItem.loadedTimeRanges;
-            CMTime duration = self.player.currentItem.duration;
+            CMTimeRange timeRange = [[self.player.currentItem.loadedTimeRanges lastObject] CMTimeRangeValue];
+            CMTime bufferedDuration = timeRange.duration;
+            CMTime totalDuration = self.player.currentItem.duration;
             
-            if (loadedTimeRanges.count > 0 && CMTIME_IS_VALID(duration) && !CMTIME_IS_INDEFINITE(duration)) {
-                CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
-                double bufferedDuration = CMTimeGetSeconds(CMTimeAdd(timeRange.start, timeRange.duration));
-                double totalDuration = CMTimeGetSeconds(duration);
-                percentage = totalDuration > 0 ? (bufferedDuration / totalDuration) * 100 : 0;
+            if (CMTIME_IS_VALID(bufferedDuration) && CMTIME_IS_VALID(totalDuration) && CMTimeGetSeconds(totalDuration) > 0) {
+                percentage = (CMTimeGetSeconds(bufferedDuration) / CMTimeGetSeconds(totalDuration)) * 100;
             }
         }
         resolve(@(percentage));
@@ -913,6 +911,128 @@ RCT_EXPORT_METHOD(addListener:(NSString *)eventName)
 RCT_EXPORT_METHOD(removeListeners:(double)count)
 {
     // Required for NativeEventEmitter
+}
+
+RCT_EXPORT_METHOD(getStats:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        NSMutableDictionary *stats = [NSMutableDictionary dictionary];
+        
+        if (self.player && self.player.currentItem) {
+            CMTime currentTime = self.player.currentTime;
+            CMTime duration = self.player.currentItem.duration;
+            CMTime bufferedTime = kCMTimeZero;
+            
+            // Get buffered duration
+            NSArray *loadedTimeRanges = self.player.currentItem.loadedTimeRanges;
+            if (loadedTimeRanges.count > 0) {
+                CMTimeRange timeRange = [[loadedTimeRanges lastObject] CMTimeRangeValue];
+                bufferedTime = CMTimeAdd(timeRange.start, timeRange.duration);
+            }
+            
+            stats[@"bufferedDuration"] = @(CMTimeGetSeconds(bufferedTime));
+            stats[@"playedDuration"] = @(CMTimeGetSeconds(currentTime));
+            stats[@"totalDuration"] = CMTIME_IS_VALID(duration) ? @(CMTimeGetSeconds(duration)) : @(0);
+            stats[@"networkSpeed"] = @(0); // Placeholder - iOS doesn't provide this directly
+            stats[@"latency"] = @(0); // Placeholder
+            stats[@"bufferHealth"] = @(self.player.currentItem.isPlaybackLikelyToKeepUp ? 100 : 50);
+            stats[@"droppedFrames"] = @(0); // Audio doesn't have frames
+            stats[@"bitRate"] = @(0); // Placeholder
+            stats[@"bufferedPosition"] = @(CMTimeGetSeconds(bufferedTime));
+            stats[@"currentPosition"] = @(CMTimeGetSeconds(currentTime));
+            stats[@"bufferedPercentage"] = CMTIME_IS_VALID(duration) && CMTimeGetSeconds(duration) > 0 ? 
+                @((CMTimeGetSeconds(bufferedTime) / CMTimeGetSeconds(duration)) * 100) : @(0);
+            stats[@"isBuffering"] = @(self.player.currentItem.isPlaybackBufferEmpty);
+            stats[@"playWhenReady"] = @(self.player.rate > 0);
+        } else {
+            // Default values when player is not initialized
+            stats[@"bufferedDuration"] = @(0);
+            stats[@"playedDuration"] = @(0);
+            stats[@"totalDuration"] = @(0);
+            stats[@"networkSpeed"] = @(0);
+            stats[@"latency"] = @(0);
+            stats[@"bufferHealth"] = @(0);
+            stats[@"droppedFrames"] = @(0);
+            stats[@"bitRate"] = @(0);
+            stats[@"bufferedPosition"] = @(0);
+            stats[@"currentPosition"] = @(0);
+            stats[@"bufferedPercentage"] = @(0);
+            stats[@"isBuffering"] = @(NO);
+            stats[@"playWhenReady"] = @(NO);
+        }
+        
+        resolve(stats);
+    } @catch (NSException *exception) {
+        reject(@"STATS_ERROR", @"Failed to get playback stats", nil);
+    }
+}
+
+RCT_EXPORT_METHOD(getMetadata:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        NSMutableDictionary *metadata = [NSMutableDictionary dictionary];
+        
+        if (self.player && self.player.currentItem && self.player.currentItem.asset) {
+            AVAsset *asset = self.player.currentItem.asset;
+            NSArray *metadataItems = [asset metadata];
+            
+            for (AVMetadataItem *item in metadataItems) {
+                NSString *key = [item commonKey];
+                
+                if ([key isEqualToString:AVMetadataCommonKeyTitle]) {
+                    metadata[@"title"] = [item stringValue] ?: @"";
+                } else if ([key isEqualToString:AVMetadataCommonKeyArtist]) {
+                    metadata[@"artist"] = [item stringValue] ?: @"";
+                } else if ([key isEqualToString:AVMetadataCommonKeyAlbumName]) {
+                    metadata[@"album"] = [item stringValue] ?: @"";
+                } else if ([key isEqualToString:AVMetadataCommonKeyCreationDate]) {
+                    metadata[@"year"] = [[item stringValue] substringToIndex:4] ?: @"";
+                }
+            }
+            
+            // Duration
+            CMTime duration = asset.duration;
+            if (CMTIME_IS_VALID(duration)) {
+                metadata[@"duration"] = @(CMTimeGetSeconds(duration));
+            }
+        }
+        
+        resolve(metadata.count > 0 ? metadata : [NSNull null]);
+    } @catch (NSException *exception) {
+        reject(@"METADATA_ERROR", @"Failed to get metadata", nil);
+    }
+}
+
+RCT_EXPORT_METHOD(getEqualizer:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        NSMutableArray *bands = [NSMutableArray array];
+        
+        if (self.equalizerBands.count > 0) {
+            for (NSDictionary *band in self.equalizerBands) {
+                [bands addObject:@{
+                    @"frequency": band[@"frequency"] ?: @0,
+                    @"gain": band[@"gain"] ?: @0
+                }];
+            }
+        } else {
+            // Return default flat equalizer
+            NSArray *frequencies = @[@60, @230, @910, @3600, @14000];
+            for (NSNumber *freq in frequencies) {
+                [bands addObject:@{
+                    @"frequency": freq,
+                    @"gain": @0
+                }];
+            }
+        }
+        
+        resolve(bands);
+    } @catch (NSException *exception) {
+        reject(@"EQUALIZER_ERROR", @"Failed to get equalizer", nil);
+    }
 }
 
 #pragma mark - Private Methods

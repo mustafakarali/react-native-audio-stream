@@ -66,7 +66,10 @@ export class AudioStream implements IAudioStream {
       ['onStreamStateChange', 'onStateChange', (data) => data.state],
       ['onStreamMetadata', 'onMetadata', (data) => data.metadata],
       ['onStreamStats', 'onStats', (data) => data.stats],
-      ['onNetworkStateChange', 'onNetworkStateChange', (data) => data.isConnected],
+      ['onNetworkStateChange', 'onNetworkStateChange', (data) => ({
+        isConnected: data.isConnected,
+        type: data.type || undefined,
+      })],
     ];
 
     eventMappings.forEach(([nativeEvent, callbackKey, transformer]) => {
@@ -378,12 +381,26 @@ export class AudioStream implements IAudioStream {
     }
   }
 
-  async applyEqualizerPreset(preset: EqualizerPreset): Promise<void> {
+  async applyEqualizerPreset(preset: EqualizerPreset | number): Promise<void> {
     this.ensureInitialized();
     
     try {
-      logger.info(`Applying equalizer preset: ${preset.name}`);
-      await this.setEqualizer(preset.bands);
+      let equalizerPreset: EqualizerPreset;
+      
+      if (typeof preset === 'number') {
+        // If preset is a number (index), get the preset from the list
+        if (preset < 0 || preset >= EQUALIZER_PRESETS.length) {
+          throw new Error(`Invalid preset index: ${preset}. Must be between 0 and ${EQUALIZER_PRESETS.length - 1}`);
+        }
+        equalizerPreset = EQUALIZER_PRESETS[preset];
+        logger.info(`Applying equalizer preset by index: ${preset} (${equalizerPreset.name})`);
+      } else {
+        // If preset is an object
+        equalizerPreset = preset;
+        logger.info(`Applying equalizer preset: ${equalizerPreset.name}`);
+      }
+      
+      await this.setEqualizer(equalizerPreset.bands);
     } catch (error) {
       logger.error('Failed to apply equalizer preset:', error);
       throw error;

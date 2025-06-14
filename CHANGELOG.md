@@ -36,6 +36,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.6.4] - 2025-01-20
+
+### Fixed
+- 🚨 **PlaybackStats Interface**: Added missing fields (bufferedPosition, currentPosition, bufferedPercentage, isBuffering, playWhenReady)
+- 🚨 **applyEqualizerPreset**: Now accepts both EqualizerPreset object and index number for backward compatibility
+- 🚨 **Event Callbacks**: Fixed onNetworkStateChange to pass state object with isConnected and optional type
+- 🚨 **iOS Native Methods**: Implemented missing getStats, getMetadata, and getEqualizer methods
+- 🚨 **Documentation**: Corrected iOS 26 references to "iOS (Future)" as iOS 26 doesn't exist
+
+### Added
+- 🎵 **Equalizer Presets**: Added missing presets (Pop, Jazz, Dance, Classical) to match documentation
+- 📊 **iOS Stats Implementation**: Full PlaybackStats support on iOS platform
+- 🎵 **iOS Metadata**: Proper metadata extraction from AVAsset
+
+### Changed
+- Updated React Native compatibility table to reflect actual RN 0.80 release
+- Improved error handling in iOS native methods
+- Better TypeScript type safety with union types
+
 ## [1.6.3] - 2025-01-20
 
 ### Fixed

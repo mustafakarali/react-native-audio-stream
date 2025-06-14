@@ -89,6 +89,11 @@ export interface PlaybackStats {
   bufferHealth: number; // 0-100 percentage
   droppedFrames: number;
   bitRate: number; // actual bitrate in kbps
+  bufferedPosition: number; // End position of buffer in seconds
+  currentPosition: number; // Current playback position
+  bufferedPercentage: number; // Percentage of total duration buffered
+  isBuffering: boolean; // Currently buffering
+  playWhenReady: boolean; // Will play when buffer is ready
 }
 
 export interface AudioMetadata {
@@ -133,7 +138,7 @@ export interface AudioStreamCallbacks {
   onStateChange?: (state: PlaybackState) => void;
   onMetadata?: (metadata: AudioMetadata) => void;
   onStats?: (stats: PlaybackStats) => void;
-  onNetworkStateChange?: (isConnected: boolean) => void;
+  onNetworkStateChange?: (state: { isConnected: boolean; type?: string }) => void;
 }
 
 export interface AudioDeviceInfo {
@@ -184,7 +189,7 @@ export interface IAudioStream {
   // Equalizer
   setEqualizer(bands: EqualizerBand[]): Promise<void>;
   getEqualizer(): Promise<EqualizerBand[]>;
-  applyEqualizerPreset(preset: EqualizerPreset): Promise<void>;
+  applyEqualizerPreset(preset: EqualizerPreset | number): Promise<void>;
   getEqualizerPresets(): Promise<EqualizerPreset[]>;
   
   // Event handling
@@ -345,6 +350,46 @@ export const EQUALIZER_PRESETS: EqualizerPreset[] = [
       { frequency: 910, gain: -1 },
       { frequency: 3600, gain: 3 },
       { frequency: 14000, gain: 5 },
+    ],
+  },
+  {
+    name: 'Pop',
+    bands: [
+      { frequency: 60, gain: -1 },
+      { frequency: 230, gain: 2 },
+      { frequency: 910, gain: 4 },
+      { frequency: 3600, gain: 3 },
+      { frequency: 14000, gain: -1 },
+    ],
+  },
+  {
+    name: 'Jazz',
+    bands: [
+      { frequency: 60, gain: 3 },
+      { frequency: 230, gain: 0 },
+      { frequency: 910, gain: -2 },
+      { frequency: 3600, gain: 2 },
+      { frequency: 14000, gain: 3 },
+    ],
+  },
+  {
+    name: 'Dance',
+    bands: [
+      { frequency: 60, gain: 6 },
+      { frequency: 230, gain: 0 },
+      { frequency: 910, gain: 2 },
+      { frequency: 3600, gain: 4 },
+      { frequency: 14000, gain: 0 },
+    ],
+  },
+  {
+    name: 'Classical',
+    bands: [
+      { frequency: 60, gain: 0 },
+      { frequency: 230, gain: 0 },
+      { frequency: 910, gain: 0 },
+      { frequency: 3600, gain: -3 },
+      { frequency: 14000, gain: -3 },
     ],
   },
 ]; 

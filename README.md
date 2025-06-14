@@ -21,20 +21,21 @@ A comprehensive React Native audio streaming library with real-time playback sup
 - 🎨 **Multiple Formats** - MP3, AAC, WAV, OGG, FLAC, PCM support
 - 🎬 **HLS/DASH Support** - Native adaptive bitrate streaming support
 - ❌ **Cancel Stream** - Properly cancel ongoing streams
-- 🎙️ **iOS 26 Features** - AirPods high-quality recording, input device picker, spatial audio
+- 🎙️ **iOS Features (Future)** - AirPods high-quality recording, input device picker, spatial audio
 - 🚀 **Enhanced Buffering** - AirPlay 2 enhanced buffering for better performance
 - 📍 **AVQueuePlayer Support** - Enhanced playback capabilities with queue management
 
 ## Compatibility
 
-| React Native Version | Package Version | Status |
-|---------------------|----------------|---------|
-| 0.80.x              | 1.6.x          | ✅ Supported |
-| 0.79.x              | 1.5.x - 1.6.x  | ✅ Supported |
-| 0.78.x              | 1.4.x - 1.6.x  | ✅ Supported |
-| 0.77.x              | 1.4.x - 1.6.x  | ✅ Supported |
-| 0.76.x              | 1.4.x - 1.6.x  | ✅ Supported |
-| < 0.76              | -              | ❌ Not supported |
+| RN Audio Stream | React Native | iOS | Android | Expo SDK |
+|-----------------|--------------|-----|---------|----------|
+| 1.0.0+          | 0.64+        | 11+ | 21+     | 43+      |
+| 1.4.x           | 0.71+        | 13+ | 23+     | 48+      |
+| 1.5.x - 1.6.x   | 0.73+        | 13+ | 23+     | 49+      |
+
+✅ Actively maintained
+📱 React Native 0.76+ New Architecture support (default)
+🏗️ React Native 0.80 supported
 
 ## Installation
 
@@ -602,16 +603,16 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 Made with ❤️ by the React Native community 
 
-### iOS 26 Features
+### iOS Features (Future)
 
-The library includes support for the latest iOS 26 audio features:
+The library includes support for upcoming iOS audio features:
 
 #### Input Device Selection
 
-Show the native iOS input device picker with live sound level metering:
+Show the native iOS input device picker with live sound level metering (when available):
 
 ```typescript
-// Show input device picker (iOS 26+)
+// Show input device picker (Future iOS feature)
 await AudioStream.showInputPicker();
 
 // Get list of available input devices
@@ -639,14 +640,14 @@ console.log(inputs);
 
 ```typescript
 await AudioStream.initialize({
-  // iOS 26 Features
+  // iOS Features (Future)
   enableRecording: true,           // Enable recording support
   voiceProcessing: true,           // Enable voice processing
   spokenAudio: true,              // Optimize for podcasts/audiobooks
   longFormAudio: true,            // Enable long-form audio routing
-  enableAirPodsHighQuality: true, // AirPods high-quality recording
+  enableAirPodsHighQuality: true, // AirPods high-quality recording (when available)
   enableEnhancedBuffering: true,  // AirPlay 2 enhanced buffering
-  enableSpatialAudio: true,       // Spatial audio support
+  enableSpatialAudio: true,       // Spatial audio support (when available)
 });
 ```
 
