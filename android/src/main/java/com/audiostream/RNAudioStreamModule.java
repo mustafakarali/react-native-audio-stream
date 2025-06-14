@@ -32,6 +32,8 @@ import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.source.dash.DashMediaSource;
+import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
@@ -276,7 +278,28 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     }
 
                     MediaItem mediaItem = mediaItemBuilder.build();
-                    player.setMediaItem(mediaItem);
+                    
+                    // Create appropriate media source based on URL
+                    MediaSource mediaSource;
+                    if (url.endsWith(".m3u8") || url.contains("playlist.m3u8")) {
+                        // HLS stream
+                        mediaSource = new HlsMediaSource.Factory(dataSourceFactory)
+                                .createMediaSource(mediaItem);
+                    } else if (url.endsWith(".mpd")) {
+                        // DASH stream
+                        mediaSource = new DashMediaSource.Factory(dataSourceFactory)
+                                .createMediaSource(mediaItem);
+                    } else if (url.endsWith(".ism") || url.endsWith(".isml")) {
+                        // SmoothStreaming
+                        mediaSource = new SsMediaSource.Factory(dataSourceFactory)
+                                .createMediaSource(mediaItem);
+                    } else {
+                        // Progressive download (normal MP3, etc.)
+                        mediaSource = new DefaultMediaSourceFactory(dataSourceFactory)
+                                .createMediaSource(mediaItem);
+                    }
+                    
+                    player.setMediaSource(mediaSource);
                     player.prepare();
 
                     if (this.config.hasKey("autoPlay") && this.config.getBoolean("autoPlay")) {
@@ -465,11 +488,22 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     public void getBufferedPercentage(Promise promise) {
         try {
             int percentage = 0;
-            if (player != null && player.getDuration() != C.TIME_UNSET) {
+            if (player != null) {
                 long bufferedPosition = player.getBufferedPosition();
                 long duration = player.getDuration();
-                if (duration > 0) {
+                
+                if (duration != C.TIME_UNSET && duration > 0) {
+                    // Known duration - calculate percentage normally
                     percentage = (int) ((bufferedPosition * 100) / duration);
+                } else {
+                    // Live stream or unknown duration - use buffer size relative to current position
+                    long currentPosition = player.getCurrentPosition();
+                    if (bufferedPosition > currentPosition) {
+                        // Show buffer ahead as percentage (max 100%)
+                        long bufferAhead = bufferedPosition - currentPosition;
+                        // Consider 30 seconds of buffer as 100%
+                        percentage = Math.min(100, (int) ((bufferAhead * 100) / 30000));
+                    }
                 }
             }
             promise.resolve(percentage);
@@ -520,8 +554,22 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                 // Additional buffer information
                 stats.putDouble("bufferedPosition", player.getBufferedPosition() / 1000.0);
                 stats.putDouble("currentPosition", currentPosition / 1000.0);
-                stats.putInt("bufferedPercentage", player.getDuration() > 0 ? 
-                    (int) ((player.getBufferedPosition() * 100) / player.getDuration()) : 0);
+                
+                // Calculate buffered percentage
+                int bufferedPercentage = 0;
+                if (totalDuration > 0) {
+                    // Known duration
+                    bufferedPercentage = (int) ((player.getBufferedPosition() * 100) / player.getDuration());
+                } else {
+                    // Live stream - use buffer ahead
+                    long bufferAhead = bufferedPosition - currentPosition;
+                    if (bufferAhead > 0) {
+                        // Consider 30 seconds as 100%
+                        bufferedPercentage = Math.min(100, (int) ((bufferAhead * 100) / 30000));
+                    }
+                }
+                
+                stats.putInt("bufferedPercentage", bufferedPercentage);
                 stats.putBoolean("isBuffering", player.getPlaybackState() == Player.STATE_BUFFERING);
                 stats.putBoolean("playWhenReady", player.getPlayWhenReady());
             }

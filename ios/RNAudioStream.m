@@ -599,7 +599,15 @@ RCT_EXPORT_METHOD(getStats:(RCTPromiseResolveBlock)resolve
                 bufferedPosition = start + duration;
                 
                 if (totalDuration > 0) {
+                    // Known duration
                     bufferedPercentage = (bufferedPosition / totalDuration) * 100;
+                } else {
+                    // Live stream - use buffer ahead
+                    double bufferAhead = bufferedPosition - currentTime;
+                    if (bufferAhead > 0) {
+                        // Consider 30 seconds as 100%
+                        bufferedPercentage = MIN(100, (bufferAhead * 100) / 30);
+                    }
                 }
             }
             

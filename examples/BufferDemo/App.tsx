@@ -181,13 +181,8 @@ const App: React.FC = () => {
 
   // Re-initialize when background mode changes
   useEffect(() => {
-    if (isInitialized) {
-      // Stop current stream
-      AudioStream.stopStream().then(() => {
-        // Re-initialize with new background mode setting
-        initializeAudioStream();
-      }).catch(console.error);
-    }
+    // Don't re-initialize, just update the state
+    // Background mode changes should not affect current playback
   }, [enableBackgroundMode]);
 
   // Update buffer percentage from stats
@@ -414,6 +409,7 @@ const App: React.FC = () => {
       case PlaybackState.PAUSED:
       case PlaybackState.IDLE:
       case PlaybackState.STOPPED:
+      case PlaybackState.ERROR:
         return '▶️ Play';
       case PlaybackState.LOADING:
       case PlaybackState.BUFFERING:
@@ -461,7 +457,7 @@ const App: React.FC = () => {
       <ScrollView contentInsetAdjustmentBehavior="automatic">
         <View style={styles.header}>
           <Text style={styles.title}>🎵 Audio Stream Buffer Demo</Text>
-          <Text style={styles.version}>v1.2.2 - Small Buffer Edition</Text>
+          <Text style={styles.version}>v1.3.0 - Real-time Buffer Monitor</Text>
         </View>
 
         {!isInitialized ? (
@@ -574,7 +570,9 @@ const App: React.FC = () => {
                 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Buffer Percentage:</Text>
-                  <Text style={styles.detailValue}>
+                  <Text style={[styles.detailValue,
+                    { fontWeight: 'bold', color: detailedStats.bufferedPercentage > 0 ? '#4CAF50' : '#F44336' }
+                  ]}>
                     {detailedStats.bufferedPercentage || 0}%
                   </Text>
                 </View>
@@ -593,6 +591,70 @@ const App: React.FC = () => {
                   <Text style={styles.detailValue}>
                     {detailedStats.playWhenReady ? 'Yes' : 'No'}
                   </Text>
+                </View>
+
+                {/* Buffer chunks visualization */}
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Buffer Size:</Text>
+                  <Text style={styles.detailValue}>
+                    {((detailedStats.bufferedPosition - detailedStats.currentPosition) * 1000).toFixed(0)} ms
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Total Buffered:</Text>
+                  <Text style={styles.detailValue}>
+                    {formatTime(detailedStats.bufferedDuration || 0)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Real-time Buffer Monitor */}
+            {stats && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>🔴 Real-time Buffer Monitor</Text>
+                
+                {/* Live buffer chunks */}
+                <View style={styles.bufferChunksContainer}>
+                  <Text style={styles.bufferChunkLabel}>Buffer Chunks:</Text>
+                  <View style={styles.bufferChunks}>
+                    {Array.from({ length: 10 }).map((_, index) => {
+                      const isBuffered = stats.bufferedPercentage > (index * 10);
+                      const isCurrent = Math.floor((currentTime / duration) * 10) === index;
+                      return (
+                        <View
+                          key={index}
+                          style={[
+                            styles.bufferChunk,
+                            isBuffered && styles.bufferChunkFilled,
+                            isCurrent && styles.bufferChunkCurrent,
+                          ]}
+                        >
+                          <Text style={styles.chunkText}>{index * 10}%</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Buffer percentage display */}
+                <View style={styles.bufferPercentageContainer}>
+                  <Text style={styles.bufferPercentageLabel}>Buffer Fill:</Text>
+                  <View style={styles.bufferPercentageBar}>
+                    <View 
+                      style={[
+                        styles.bufferPercentageFill,
+                        { 
+                          width: `${stats.bufferedPercentage || 0}%`,
+                          backgroundColor: stats.bufferedPercentage > 50 ? '#4CAF50' : '#FF9800'
+                        }
+                      ]} 
+                    />
+                    <Text style={styles.bufferPercentageText}>
+                      {stats.bufferedPercentage || 0}%
+                    </Text>
+                  </View>
                 </View>
               </View>
             )}
@@ -1025,6 +1087,75 @@ const styles = StyleSheet.create({
     color: '#333',
     flex: 1,
     textAlign: 'right',
+  },
+  
+  // Buffer chunks styles
+  bufferChunksContainer: {
+    marginVertical: 10,
+  },
+  bufferChunkLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#333',
+  },
+  bufferChunks: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  bufferChunk: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 5,
+    marginBottom: 5,
+  },
+  bufferChunkFilled: {
+    backgroundColor: '#2196F3',
+  },
+  bufferChunkCurrent: {
+    borderWidth: 2,
+    borderColor: '#FF5722',
+  },
+  chunkText: {
+    fontSize: 10,
+    color: '#666',
+  },
+  
+  // Buffer percentage styles
+  bufferPercentageContainer: {
+    marginTop: 20,
+  },
+  bufferPercentageLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#333',
+  },
+  bufferPercentageBar: {
+    height: 30,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 15,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  bufferPercentageFill: {
+    height: '100%',
+    borderRadius: 15,
+  },
+  bufferPercentageText: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    textAlign: 'center',
+    lineHeight: 30,
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
   },
 });
 
