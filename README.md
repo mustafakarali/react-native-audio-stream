@@ -17,8 +17,10 @@ A comprehensive React Native audio streaming library with real-time playback sup
 - 💾 **Smart Caching** - Automatic caching with configurable size limits
 - 🔄 **Network Resilience** - Automatic reconnection and retry logic
 - 🎯 **Background Playback** - Continue playing when app is in background
-- 📡 **Multiple Protocols** - Support for HTTP, HTTPS, and WebSocket streaming
-- 🎨 **Multiple Formats** - MP3, AAC, WAV, OGG support
+- 📡 **Multiple Protocols** - Support for HTTP, HTTPS, HLS, DASH, and WebSocket streaming
+- 🎨 **Multiple Formats** - MP3, AAC, WAV, OGG, FLAC support
+- 🎬 **HLS/DASH Support** - Adaptive bitrate streaming support
+- ❌ **Cancel Stream** - Properly cancel ongoing streams
 
 ## Compatibility
 
@@ -121,6 +123,10 @@ await AudioStream.startStream('https://example.com/audio.mp3', {
 #### `stopStream(): Promise<void>`
 
 Stop the current stream and clean up resources.
+
+#### `cancelStream(): Promise<void>`
+
+Cancel the current stream immediately and set state to IDLE. Unlike `stopStream()`, this doesn't wait for cleanup.
 
 ### Playback Control
 

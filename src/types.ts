@@ -132,6 +132,7 @@ export interface IAudioStream {
   // Streaming methods
   startStream(url: string, config?: AudioStreamConfig): Promise<void>;
   stopStream(): Promise<void>;
+  cancelStream(): Promise<void>;
   
   // Playback control
   play(): Promise<void>;
@@ -198,6 +199,7 @@ export interface AudioStreamNativeModule {
   destroy(): Promise<void>;
   startStream(url: string, config: AudioStreamConfig): Promise<void>;
   stopStream(): Promise<void>;
+  cancelStream(): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
   stop(): Promise<void>;

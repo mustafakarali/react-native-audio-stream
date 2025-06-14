@@ -41,6 +41,8 @@ const SAMPLE_STREAMS = [
   { name: 'SomaFM - Groove Salad', url: 'https://somafm.com/groovesalad256.pls' },
   { name: 'Test MP3 Stream', url: 'https://cdn.pixabay.com/download/audio/2021/11/25/audio_91b32e02f9.mp3' },
   { name: 'Kafa Radyo', url: 'https://moondigitaledge2.radyotvonline.net/kafaradyo/playlist.m3u8' },
+  { name: 'BBC Radio 1', url: 'http://stream.live.vc.bbcmedia.co.uk/bbc_radio_one' },
+  { name: 'Streaming Test (HLS)', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
 ];
 
 // Time formatting helper
@@ -49,6 +51,24 @@ const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Helper function to detect stream type
+const getStreamType = (url: string): string => {
+  if (url.includes('.m3u8')) return 'HLS';
+  if (url.includes('.mpd')) return 'DASH';
+  if (url.includes('.mp3')) return 'MP3';
+  if (url.includes('.aac')) return 'AAC';
+  if (url.includes('.ogg')) return 'OGG';
+  if (url.includes('.flac')) return 'FLAC';
+  return 'HTTP Stream';
+};
+
+// Helper function to format bytes
+const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
 // Buffer visualization component
@@ -166,6 +186,9 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [enableBackgroundMode, setEnableBackgroundMode] = useState(true);
   const [detailedStats, setDetailedStats] = useState<any>(null);
+  const [bufferEvents, setBufferEvents] = useState<string[]>([]);
+  const [streamHistory, setStreamHistory] = useState<any[]>([]);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
 
   // Animation refs
   const bufferHealthAnimation = useRef(new Animated.Value(100)).current;
@@ -219,6 +242,10 @@ const App: React.FC = () => {
       AudioStream.addEventListener('onBuffer', (buffering: boolean) => {
         console.log('Buffering:', buffering);
         setIsBuffering(buffering);
+        
+        // Track buffer events
+        const event = `${new Date().toLocaleTimeString()}: Buffer ${buffering ? 'started' : 'ended'}`;
+        setBufferEvents(prev => [...prev.slice(-9), event]);
       });
 
       AudioStream.addEventListener('onProgress', (progress: any) => {
@@ -755,6 +782,89 @@ const App: React.FC = () => {
               </TouchableOpacity>
             </View>
 
+            {/* Buffer Events History */}
+            {bufferEvents.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>📊 Buffer Events History</Text>
+                <ScrollView style={styles.eventHistory}>
+                  {bufferEvents.map((event, index) => (
+                    <Text key={index} style={styles.eventText}>{event}</Text>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Advanced Stream Controls */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🎛️ Advanced Controls</Text>
+              
+              {/* Network Priority */}
+              <View style={styles.advancedControlRow}>
+                <Text style={styles.advancedControlLabel}>Network Priority:</Text>
+                <View style={styles.priorityButtons}>
+                  <TouchableOpacity
+                    style={[styles.priorityButton, styles.priorityLow]}
+                    onPress={() => AudioStream.setNetworkPriority('low')}
+                  >
+                    <Text style={styles.priorityButtonText}>Low</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.priorityButton, styles.priorityNormal]}
+                    onPress={() => AudioStream.setNetworkPriority('normal')}
+                  >
+                    <Text style={styles.priorityButtonText}>Normal</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.priorityButton, styles.priorityHigh]}
+                    onPress={() => AudioStream.setNetworkPriority('high')}
+                  >
+                    <Text style={styles.priorityButtonText}>High</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Playback Rate */}
+              <View style={styles.advancedControlRow}>
+                <Text style={styles.advancedControlLabel}>Speed: {playbackSpeed.toFixed(1)}x</Text>
+                <Slider
+                  style={styles.rateSlider}
+                  minimumValue={0.5}
+                  maximumValue={2.0}
+                  value={playbackSpeed}
+                  onValueChange={async (value) => {
+                    setPlaybackSpeed(value);
+                    await AudioStream.setPlaybackRate(value);
+                  }}
+                  minimumTrackTintColor="#2196F3"
+                  maximumTrackTintColor="#CCCCCC"
+                  thumbTintColor="#2196F3"
+                />
+              </View>
+            </View>
+
+            {/* Network Status */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🌐 Network Status</Text>
+              <View style={styles.networkStatus}>
+                <View style={[styles.networkIndicator, { backgroundColor: networkSpeed > 200 ? '#4CAF50' : '#FF5722' }]} />
+                <Text style={styles.networkText}>
+                  {networkSpeed > 0 ? `Connected (${Math.round(networkSpeed)} KB/s)` : 'Connecting...'}
+                </Text>
+              </View>
+              
+              {/* Stream Info */}
+              {stats && (
+                <View style={styles.streamInfo}>
+                  <Text style={styles.streamInfoText}>Protocol: {getStreamType(streamUrl)}</Text>
+                  <Text style={styles.streamInfoText}>Bitrate: {stats.bitRate || 0} kbps</Text>
+                  <Text style={styles.streamInfoText}>Buffer Size: {((stats.bufferedPosition - stats.currentPosition) * 1000).toFixed(0)} ms</Text>
+                  <Text style={styles.streamInfoText}>Latency: {stats.latency || 0} ms</Text>
+                  <Text style={styles.streamInfoText}>Played: {formatTime(stats.playedDuration || 0)}</Text>
+                  <Text style={styles.streamInfoText}>Buffered: {formatTime(stats.bufferedDuration || 0)}</Text>
+                </View>
+              )}
+            </View>
+
             {/* Cache Controls */}
             <View style={styles.cacheControls}>
               <TouchableOpacity
@@ -1156,6 +1266,84 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: '#333',
+  },
+  eventHistory: {
+    maxHeight: 150,
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+  },
+  eventText: {
+    fontSize: 12,
+    color: '#666',
+    marginVertical: 2,
+  },
+  advancedControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginVertical: 10,
+  },
+  advancedControlLabel: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  priorityButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  priorityButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  priorityLow: {
+    backgroundColor: '#9E9E9E',
+  },
+  priorityNormal: {
+    backgroundColor: '#2196F3',
+  },
+  priorityHigh: {
+    backgroundColor: '#FF5722',
+  },
+  priorityButtonText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  rateSlider: {
+    flex: 1,
+    marginLeft: 20,
+  },
+  networkStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  networkIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 10,
+  },
+  networkText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  streamInfo: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+  },
+  streamInfoText: {
+    fontSize: 12,
+    color: '#666',
+    marginVertical: 2,
   },
 });
 

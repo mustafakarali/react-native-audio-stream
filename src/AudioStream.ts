@@ -202,6 +202,20 @@ export class AudioStream implements IAudioStream {
     }
   }
 
+  async cancelStream(): Promise<void> {
+    this.ensureInitialized();
+    
+    try {
+      logger.info('Cancelling stream');
+      await RNAudioStream.cancelStream();
+      this.currentUrl = null;
+      logger.info('Stream cancelled successfully');
+    } catch (error) {
+      logger.error('Failed to cancel stream:', error);
+      throw error;
+    }
+  }
+
   async seek(position: number): Promise<void> {
     this.ensureInitialized();
     
