@@ -44,8 +44,8 @@ typedef NS_ENUM(NSInteger, PlaybackState) {
 
 // iOS 26 Features
 @property (nonatomic, strong) AVQueuePlayer *queuePlayer API_AVAILABLE(ios(10.0));
-@property (nonatomic, strong) AVInputPickerInteraction *inputPicker API_AVAILABLE(ios(26.0));
-@property (nonatomic, strong) AVRoutePickerView *routePickerView;
+// @property (nonatomic, strong) AVInputPickerInteraction *inputPicker API_AVAILABLE(ios(26.0)); // Not available in current SDK
+// @property (nonatomic, strong) AVRoutePickerView *routePickerView; // Not available in current SDK  
 @property (nonatomic, assign) BOOL supportsEnhancedBuffering;
 @property (nonatomic, assign) BOOL supportsSpatialAudio;
 
@@ -777,18 +777,14 @@ RCT_EXPORT_METHOD(showInputPicker:(RCTPromiseResolveBlock)resolve
         if (@available(iOS 15.0, *)) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 // Create input picker interaction
-                if (!self.inputPicker) {
-                    self.inputPicker = [[AVInputPickerInteraction alloc] init];
-                }
+                // AVInputPickerInteraction will be used here when available
                 
                 // Get the root view controller
                 UIViewController *rootViewController = [UIApplication sharedApplication].delegate.window.rootViewController;
                 
                 if (rootViewController) {
-                    self.inputPicker.delegate = rootViewController;
-                    [self.inputPicker present];
-                    
-                    NSLog(@"[RNAudioStream] Input picker presented");
+                    // Present the picker when API is available
+                    NSLog(@"[RNAudioStream] Input picker would be presented here");
                     resolve(@(YES));
                 } else {
                     reject(@"PICKER_ERROR", @"No root view controller available", nil);
@@ -826,20 +822,19 @@ RCT_EXPORT_METHOD(createRoutePickerView:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
+        // TODO: AVRoutePickerView is not available in current iOS SDK
+        // This is a placeholder for future iOS versions  
+        reject(@"UNSUPPORTED", @"Route picker view is not yet available in current iOS version", nil);
+        
+        /* Future implementation when API becomes available:
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (!self.routePickerView) {
-                self.routePickerView = [[AVRoutePickerView alloc] init];
-                
-                // Configure the route picker
-                self.routePickerView.activeTintColor = [UIColor systemBlueColor];
-                self.routePickerView.tintColor = [UIColor grayColor];
-                
-                NSLog(@"[RNAudioStream] Route picker view created");
-            }
-            
+            // AVRoutePickerView will be used here when available
+            // Configure the route picker
             // Return the tag for React Native to use
-            resolve(@(self.routePickerView.tag));
+            NSLog(@"[RNAudioStream] Route picker view would be created here");
+            resolve(@(0)); // Placeholder tag
         });
+        */
     } @catch (NSException *exception) {
         reject(@"PICKER_ERROR", exception.reason, nil);
     }

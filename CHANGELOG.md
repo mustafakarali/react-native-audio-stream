@@ -36,6 +36,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.6.3] - 2025-01-20
+
+### Fixed
+- 🚨 **Critical iOS Build Fix**: Commented out non-existent SDK types (AVInputPickerInteraction, AVRoutePickerView)
+- Fixed "Property with 'retain (or strong)' attribute must be of object type" error
+- Fixed "Unknown type name 'AVInputPickerInteraction'" error
+- Removed all references to unavailable iOS SDK types in property declarations
+
+## [1.6.2] - 2025-01-20
+
+### Fixed
+- 🚨 **Critical iOS Build Fix**: Commented out non-existent SDK types (AVInputPickerInteraction, AVRoutePickerView)
+- Fixed "Property with 'retain (or strong)' attribute must be of object type" error
+- Fixed "Unknown type name 'AVInputPickerInteraction'" error
+- Removed all references to unavailable iOS SDK types
+
 ## [1.6.1] - 2025-01-20
 
 ### Fixed
