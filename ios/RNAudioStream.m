@@ -39,6 +39,7 @@ typedef NS_ENUM(NSInteger, PlaybackState) {
 @property (nonatomic, strong) NSCache *audioCache;
 @property (nonatomic, strong) NSString *cachePath;
 @property (nonatomic, assign) BOOL hasObservers;
+@property (nonatomic, strong) id timeObserver;
 
 @end
 
@@ -108,9 +109,11 @@ RCT_EXPORT_MODULE()
 
 - (void)dealloc
 {
-    [self cleanup];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self cleanup];
 }
+
+#pragma mark - Setup Methods
 
 - (void)setupAudioEngine
 {
@@ -161,20 +164,18 @@ RCT_EXPORT_MODULE()
                                                  name:AVPlayerItemDidPlayToEndTimeNotification
                                                object:nil];
     
-    // Notification for metadata changes
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(playerItemNewAccessLogEntry:)
                                                  name:AVPlayerItemNewAccessLogEntryNotification
                                                object:nil];
     
-    // Notification for error logs
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(playerItemNewErrorLogEntry:)
                                                  name:AVPlayerItemNewErrorLogEntryNotification
                                                object:nil];
 }
 
-#pragma mark - RCT Methods
+#pragma mark - RCT Export Methods
 
 RCT_EXPORT_METHOD(initialize:(NSDictionary *)config
                   resolver:(RCTPromiseResolveBlock)resolve
@@ -238,8 +239,14 @@ RCT_EXPORT_METHOD(startStream:(NSString *)url
 {
     @try {
         if (!self.isInitialized) {
-            reject(@"INVALID_STATE", @"AudioStream not initialized", nil);
-            return;
+            // Auto-initialize if not already done
+            NSError *error = nil;
+            [self setupAudioSessionWithError:&error];
+            if (error) {
+                reject(@"INITIALIZATION_ERROR", @"Failed to initialize audio session", error);
+                return;
+            }
+            self.isInitialized = YES;
         }
         
         self.currentUrl = url;
@@ -266,170 +273,6 @@ RCT_EXPORT_METHOD(startStream:(NSString *)url
     }
 }
 
-- (void)startStreamingFromURL:(NSURL *)url
-{
-    // Check if this is HLS/DASH stream
-    NSString *urlString = [url absoluteString];
-    BOOL isHLS = [urlString containsString:@".m3u8"] || [urlString containsString:@"playlist.m3u8"];
-    BOOL isDASH = [urlString containsString:@".mpd"];
-    
-    if (isHLS || isDASH) {
-        // Use AVPlayer directly for HLS/DASH
-        [self startHLSStreamFromURL:url];
-    } else {
-        // Use URLSession for progressive download
-        [self startProgressiveStreamFromURL:url];
-    }
-}
-
-- (void)startHLSStreamFromURL:(NSURL *)url
-{
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // Create AVAsset with headers if provided
-        NSMutableDictionary *options = [NSMutableDictionary dictionary];
-        NSDictionary *headers = self.config[@"headers"];
-        if (headers) {
-            options[@"AVURLAssetHTTPHeaderFieldsKey"] = headers;
-        }
-        
-        AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:options];
-        
-        // Create player item
-        self.playerItem = [AVPlayerItem playerItemWithAsset:asset];
-        
-        // Add observers
-        [self.playerItem addObserver:self
-                          forKeyPath:@"status"
-                             options:NSKeyValueObservingOptionNew
-                             context:nil];
-        
-        [self.playerItem addObserver:self
-                          forKeyPath:@"playbackBufferEmpty"
-                             options:NSKeyValueObservingOptionNew
-                             context:nil];
-        
-        [self.playerItem addObserver:self
-                          forKeyPath:@"playbackLikelyToKeepUp"
-                             options:NSKeyValueObservingOptionNew
-                             context:nil];
-        
-        self.hasObservers = YES;
-        
-        // Create player
-        if (!self.player) {
-            self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
-        } else {
-            [self.player replaceCurrentItemWithPlayerItem:self.playerItem];
-        }
-        
-        // Configure player for HLS
-        self.player.automaticallyWaitsToMinimizeStalling = YES;
-        
-        [self sendEventWithName:@"onStreamStart" body:@{}];
-        [self startProgressTimer];
-        [self startStatsTimer];
-    });
-}
-
-- (void)startProgressiveStreamFromURL:(NSURL *)url
-{
-    // Cancel any existing task
-    [self.dataTask cancel];
-    
-    // Reset buffer
-    [self.audioBuffer setLength:0];
-    self.bufferStartTime = [[NSDate date] timeIntervalSince1970];
-    self.totalBytesReceived = 0;
-    
-    // Create request with headers
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-    NSDictionary *headers = self.config[@"headers"];
-    if (headers) {
-        [headers enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
-            [request setValue:value forHTTPHeaderField:key];
-        }];
-    }
-    
-    __weak typeof(self) weakSelf = self;
-    
-    self.dataTask = [self.urlSession dataTaskWithRequest:request
-                                        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (error) {
-            [weakSelf handleStreamError:error];
-            return;
-        }
-        
-        if (data) {
-            [weakSelf processAudioData:data];
-        }
-    }];
-    
-    [self.dataTask resume];
-    [self sendEventWithName:@"onStreamStart" body:@{}];
-}
-
-- (void)processAudioData:(NSData *)data
-{
-    [self.audioBuffer appendData:data];
-    self.totalBytesReceived += data.length;
-    
-    NSInteger bufferSize = [self.config[@"bufferSize"] integerValue] * 1024 ?: 64 * 1024;
-    NSInteger prebufferThreshold = [self.config[@"prebufferThreshold"] integerValue] * 1024 ?: 16 * 1024;
-    
-    if (self.audioBuffer.length >= prebufferThreshold && self.state == PlaybackStateLoading) {
-        [self startPlayback];
-    }
-    
-    // Emit buffer event
-    BOOL isBuffering = self.state == PlaybackStateBuffering;
-    [self sendEventWithName:@"onStreamBuffer" body:@{@"isBuffering": @(isBuffering)}];
-    
-    // Cache if enabled
-    if ([self.config[@"enableCache"] boolValue]) {
-        NSString *cacheKey = [self cacheKeyForURL:self.currentUrl];
-        [self.audioCache setObject:[self.audioBuffer copy] forKey:cacheKey cost:self.audioBuffer.length];
-    }
-}
-
-- (void)startPlayback
-{
-    if (!self.playerItem) {
-        // Create AVAsset from buffer
-        NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"tempAudio.mp3"];
-        [self.audioBuffer writeToFile:tempPath atomically:YES];
-        
-        NSURL *fileURL = [NSURL fileURLWithPath:tempPath];
-        AVAsset *asset = [AVAsset assetWithURL:fileURL];
-        self.playerItem = [AVPlayerItem playerItemWithAsset:asset];
-        
-        // Add observers
-        [self.playerItem addObserver:self
-                          forKeyPath:@"status"
-                             options:NSKeyValueObservingOptionNew
-                             context:nil];
-        
-        [self.playerItem addObserver:self
-                          forKeyPath:@"playbackBufferEmpty"
-                             options:NSKeyValueObservingOptionNew
-                             context:nil];
-        
-        [self.playerItem addObserver:self
-                          forKeyPath:@"playbackLikelyToKeepUp"
-                             options:NSKeyValueObservingOptionNew
-                             context:nil];
-        
-        self.hasObservers = YES;
-        
-        // Create player
-        self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
-        
-        // Don't call play here, let the observer handle it when ready
-    }
-    
-    [self startProgressTimer];
-    [self startStatsTimer];
-}
-
 RCT_EXPORT_METHOD(stopStream:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
@@ -447,10 +290,8 @@ RCT_EXPORT_METHOD(cancelStream:(RCTPromiseResolveBlock)resolve
 {
     @try {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (self.player) {
-                [self.player pause];
-                [self.player replaceCurrentItemWithPlayerItem:nil];
-            }
+            [self.player pause];
+            [self.player replaceCurrentItemWithPlayerItem:nil];
             
             [self.progressTimer invalidate];
             self.progressTimer = nil;
@@ -620,16 +461,13 @@ RCT_EXPORT_METHOD(getBufferedPercentage:(RCTPromiseResolveBlock)resolve
         double percentage = 0;
         if (self.player && self.player.currentItem) {
             NSArray *loadedTimeRanges = self.player.currentItem.loadedTimeRanges;
-            if (loadedTimeRanges.count > 0) {
+            CMTime duration = self.player.currentItem.duration;
+            
+            if (loadedTimeRanges.count > 0 && CMTIME_IS_VALID(duration) && !CMTIME_IS_INDEFINITE(duration)) {
                 CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
-                double startSeconds = CMTIME_IS_VALID(timeRange.start) ? CMTimeGetSeconds(timeRange.start) : 0;
-                double durationSeconds = CMTIME_IS_VALID(timeRange.duration) ? CMTimeGetSeconds(timeRange.duration) : 0;
-                CMTime totalTime = self.player.currentItem.duration;
-                double totalDuration = CMTIME_IS_VALID(totalTime) && !CMTIME_IS_INDEFINITE(totalTime) ? CMTimeGetSeconds(totalTime) : 0;
-                
-                if (totalDuration > 0) {
-                    percentage = ((startSeconds + durationSeconds) / totalDuration) * 100;
-                }
+                double bufferedDuration = CMTimeGetSeconds(CMTimeAdd(timeRange.start, timeRange.duration));
+                double totalDuration = CMTimeGetSeconds(duration);
+                percentage = totalDuration > 0 ? (bufferedDuration / totalDuration) * 100 : 0;
             }
         }
         resolve(@(percentage));
@@ -638,162 +476,54 @@ RCT_EXPORT_METHOD(getBufferedPercentage:(RCTPromiseResolveBlock)resolve
     }
 }
 
-RCT_EXPORT_METHOD(getStats:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-{
-    @try {
-        NSMutableDictionary *stats = [NSMutableDictionary dictionary];
-        
-        if (self.player && self.player.currentItem) {
-            // Buffered duration
-            NSArray *loadedTimeRanges = self.player.currentItem.loadedTimeRanges;
-            double bufferedDuration = 0;
-            if (loadedTimeRanges.count > 0) {
-                CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
-                if (CMTIME_IS_VALID(timeRange.duration)) {
-                    bufferedDuration = CMTimeGetSeconds(timeRange.duration);
-                }
-            }
-            
-            // Current and total duration
-            CMTime currentTimeValue = self.player.currentTime;
-            double currentTime = CMTIME_IS_VALID(currentTimeValue) ? CMTimeGetSeconds(currentTimeValue) : 0;
-            CMTime totalTimeValue = self.player.currentItem.duration;
-            double totalDuration = CMTIME_IS_VALID(totalTimeValue) && !CMTIME_IS_INDEFINITE(totalTimeValue) ? CMTimeGetSeconds(totalTimeValue) : 0;
-            
-            // Network speed calculation
-            NSTimeInterval elapsed = [[NSDate date] timeIntervalSince1970] - self.bufferStartTime;
-            double networkSpeed = elapsed > 0 ? (self.totalBytesReceived / elapsed) / 1024 : 0; // KB/s
-            
-            // Buffer health (0-100)
-            double bufferHealth = 100;
-            if (self.player.currentItem.playbackBufferEmpty) {
-                bufferHealth = 0;
-            } else if (self.player.currentItem.playbackLikelyToKeepUp) {
-                bufferHealth = 100;
-            } else {
-                bufferHealth = 50;
-            }
-            
-            // Calculate buffer percentage
-            double bufferedPercentage = 0;
-            double bufferedPosition = 0;
-            if (loadedTimeRanges.count > 0) {
-                CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
-                double start = CMTIME_IS_VALID(timeRange.start) ? CMTimeGetSeconds(timeRange.start) : 0;
-                double duration = CMTIME_IS_VALID(timeRange.duration) ? CMTimeGetSeconds(timeRange.duration) : 0;
-                bufferedPosition = start + duration;
-                
-                if (totalDuration > 0) {
-                    // Known duration
-                    bufferedPercentage = (bufferedPosition / totalDuration) * 100;
-                } else {
-                    // Live stream - use buffer ahead
-                    double bufferAhead = bufferedPosition - currentTime;
-                    if (bufferAhead > 0) {
-                        // Consider 30 seconds as 100%
-                        bufferedPercentage = MIN(100, (bufferAhead * 100) / 30);
-                    }
-                }
-            }
-            
-            stats[@"bufferedDuration"] = @(bufferedDuration);
-            stats[@"playedDuration"] = @(currentTime);
-            stats[@"totalDuration"] = @(totalDuration);
-            stats[@"networkSpeed"] = @(networkSpeed);
-            stats[@"latency"] = @(0); // Would need ping implementation
-            stats[@"bufferHealth"] = @(bufferHealth);
-            stats[@"droppedFrames"] = @(0); // Not applicable for audio
-            stats[@"bitRate"] = @(128); // Would need to extract from stream
-            
-            // Additional buffer information
-            stats[@"bufferedPosition"] = @(bufferedPosition);
-            stats[@"currentPosition"] = @(currentTime);
-            stats[@"bufferedPercentage"] = @((int)bufferedPercentage);
-            stats[@"isBuffering"] = @(self.state == PlaybackStateBuffering);
-            stats[@"playWhenReady"] = @(self.player.rate > 0);
-        }
-        
-        resolve(stats);
-    } @catch (NSException *exception) {
-        reject(@"STATS_ERROR", exception.reason, nil);
-    }
-}
-
-RCT_EXPORT_METHOD(getMetadata:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-{
-    @try {
-        NSMutableDictionary *metadata = [NSMutableDictionary dictionary];
-        
-        if (self.player && self.player.currentItem) {
-            AVAsset *asset = self.player.currentItem.asset;
-            NSArray *metadataItems = [asset commonMetadata];
-            
-            for (AVMetadataItem *item in metadataItems) {
-                NSString *key = [item commonKey];
-                id value = [item value];
-                
-                if ([key isEqualToString:AVMetadataCommonKeyTitle]) {
-                    metadata[@"title"] = value;
-                } else if ([key isEqualToString:AVMetadataCommonKeyArtist]) {
-                    metadata[@"artist"] = value;
-                } else if ([key isEqualToString:AVMetadataCommonKeyAlbumName]) {
-                    metadata[@"album"] = value;
-                } else if ([key isEqualToString:AVMetadataCommonKeyCreationDate]) {
-                    metadata[@"year"] = value;
-                }
-            }
-            
-            CMTime durationValue = asset.duration;
-            if (CMTIME_IS_VALID(durationValue) && !CMTIME_IS_INDEFINITE(durationValue)) {
-                double duration = CMTimeGetSeconds(durationValue);
-                if (duration > 0) {
-                    metadata[@"duration"] = @(duration);
-                }
-            }
-        }
-        
-        resolve(metadata.count > 0 ? metadata : [NSNull null]);
-    } @catch (NSException *exception) {
-        reject(@"METADATA_ERROR", exception.reason, nil);
-    }
-}
-
 RCT_EXPORT_METHOD(setEqualizer:(NSArray *)bands
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        for (NSInteger i = 0; i < bands.count && i < self.equalizer.bands.count; i++) {
-            NSDictionary *band = bands[i];
-            AVAudioUnitEQFilterParameters *filterParams = self.equalizer.bands[i];
+        for (NSDictionary *band in bands) {
+            NSInteger index = [band[@"index"] integerValue];
+            float gain = [band[@"gain"] floatValue];
             
-            filterParams.frequency = [band[@"frequency"] floatValue];
-            filterParams.gain = [band[@"gain"] floatValue];
-            filterParams.bypass = NO;
+            if (index >= 0 && index < self.equalizer.bands.count) {
+                AVAudioUnitEQFilterParameters *filterParams = self.equalizer.bands[index];
+                filterParams.gain = gain;
+            }
         }
-        
         resolve(@(YES));
     } @catch (NSException *exception) {
         reject(@"EQUALIZER_ERROR", exception.reason, nil);
     }
 }
 
-RCT_EXPORT_METHOD(getEqualizer:(RCTPromiseResolveBlock)resolve
+RCT_EXPORT_METHOD(applyEqualizerPreset:(NSInteger)presetIndex
+                  resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        NSMutableArray *bands = [NSMutableArray array];
+        // Preset definitions
+        NSArray *presets = @[
+            @[@0, @0, @0, @0, @0],           // Flat
+            @[@6, @4, @1, @3, @5],           // Bass Boost
+            @[@-2, @-1, @0, @3, @6],         // Treble Boost
+            @[@0, @2, @4, @2, @0],           // Vocal
+            @[@5, @3, @0, @-2, @4],          // Rock
+            @[@-1, @2, @5, @4, @-1],         // Pop
+            @[@3, @1, @0, @2, @4],           // Jazz
+            @[@5, @4, @2, @0, @4],           // Dance
+            @[@0, @0, @2, @4, @3]            // Classical
+        ];
         
-        for (AVAudioUnitEQFilterParameters *filterParams in self.equalizer.bands) {
-            [bands addObject:@{
-                @"frequency": @(filterParams.frequency),
-                @"gain": @(filterParams.gain)
-            }];
+        if (presetIndex >= 0 && presetIndex < presets.count) {
+            NSArray *gains = presets[presetIndex];
+            for (NSInteger i = 0; i < gains.count && i < self.equalizer.bands.count; i++) {
+                AVAudioUnitEQFilterParameters *filterParams = self.equalizer.bands[i];
+                filterParams.gain = [gains[i] floatValue];
+            }
+            resolve(@(YES));
+        } else {
+            reject(@"INVALID_PRESET", @"Invalid preset index", nil);
         }
-        
-        resolve(bands);
     } @catch (NSException *exception) {
         reject(@"EQUALIZER_ERROR", exception.reason, nil);
     }
@@ -805,14 +535,12 @@ RCT_EXPORT_METHOD(clearCache:(RCTPromiseResolveBlock)resolve
     @try {
         [self.audioCache removeAllObjects];
         
-        // Clear file cache
-        NSError *error;
+        NSError *error = nil;
         [[NSFileManager defaultManager] removeItemAtPath:self.cachePath error:&error];
         [[NSFileManager defaultManager] createDirectoryAtPath:self.cachePath
                                   withIntermediateDirectories:YES
                                                    attributes:nil
                                                         error:nil];
-        
         resolve(@(YES));
     } @catch (NSException *exception) {
         reject(@"CACHE_ERROR", exception.reason, nil);
@@ -823,17 +551,16 @@ RCT_EXPORT_METHOD(getCacheSize:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        NSUInteger size = 0;
-        
-        // Calculate file cache size
+        unsigned long long cacheSize = 0;
         NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:self.cachePath error:nil];
+        
         for (NSString *file in files) {
             NSString *filePath = [self.cachePath stringByAppendingPathComponent:file];
             NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:filePath error:nil];
-            size += [attributes[NSFileSize] unsignedIntegerValue];
+            cacheSize += [attributes[NSFileSize] unsignedLongLongValue];
         }
         
-        resolve(@(size));
+        resolve(@(cacheSize));
     } @catch (NSException *exception) {
         reject(@"CACHE_ERROR", exception.reason, nil);
     }
@@ -844,50 +571,22 @@ RCT_EXPORT_METHOD(preloadStream:(NSString *)url
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        // Implementation would download and cache the specified duration
-        // For now, just resolve
-        resolve(@(YES));
-    } @catch (NSException *exception) {
-        reject(@"PRELOAD_ERROR", exception.reason, nil);
-    }
-}
-
-RCT_EXPORT_METHOD(setNetworkPriority:(NSString *)priority
-                  resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-{
-    @try {
-        // Implementation would adjust network priority
-        // For now, just resolve
-        resolve(@(YES));
-    } @catch (NSException *exception) {
-        reject(@"NETWORK_ERROR", exception.reason, nil);
-    }
+    // TODO: Implement preloading logic
+    resolve(@(YES));
 }
 
 RCT_EXPORT_METHOD(requestAudioFocus:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSError *error;
-        BOOL success = [self.audioSession setActive:YES error:&error];
-        resolve(@(success));
-    } @catch (NSException *exception) {
-        reject(@"AUDIO_FOCUS_ERROR", exception.reason, nil);
-    }
+    // iOS handles audio focus automatically
+    resolve(@(YES));
 }
 
 RCT_EXPORT_METHOD(abandonAudioFocus:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-    @try {
-        NSError *error;
-        [self.audioSession setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:&error];
-        resolve(@(YES));
-    } @catch (NSException *exception) {
-        reject(@"AUDIO_FOCUS_ERROR", exception.reason, nil);
-    }
+    // iOS handles audio focus automatically
+    resolve(@(YES));
 }
 
 RCT_EXPORT_METHOD(setAudioSessionCategory:(NSString *)category
@@ -895,8 +594,18 @@ RCT_EXPORT_METHOD(setAudioSessionCategory:(NSString *)category
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        NSError *error;
-        [self.audioSession setCategory:category error:&error];
+        NSError *error = nil;
+        AVAudioSessionCategory sessionCategory = AVAudioSessionCategoryPlayback;
+        
+        if ([category isEqualToString:@"ambient"]) {
+            sessionCategory = AVAudioSessionCategoryAmbient;
+        } else if ([category isEqualToString:@"soloAmbient"]) {
+            sessionCategory = AVAudioSessionCategorySoloAmbient;
+        } else if ([category isEqualToString:@"playAndRecord"]) {
+            sessionCategory = AVAudioSessionCategoryPlayAndRecord;
+        }
+        
+        [[AVAudioSession sharedInstance] setCategory:sessionCategory error:&error];
         
         if (error) {
             reject(@"AUDIO_SESSION_ERROR", error.localizedDescription, error);
@@ -908,34 +617,7 @@ RCT_EXPORT_METHOD(setAudioSessionCategory:(NSString *)category
     }
 }
 
-RCT_EXPORT_METHOD(cancelStream:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-{
-    @try {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (self.player) {
-                [self.player pause];
-                [self.player replaceCurrentItemWithPlayerItem:nil];
-            }
-            [self.progressTimer invalidate];
-            self.progressTimer = nil;
-            
-            [self.statsTimer invalidate];
-            self.statsTimer = nil;
-            
-            [self.dataTask cancel];
-            self.dataTask = nil;
-            
-            self.currentUrl = nil;
-            [self updateState:PlaybackStateIdle];
-        });
-        resolve(@(YES));
-    } @catch (NSException *exception) {
-        reject(@"CANCEL_ERROR", @"Failed to cancel stream", nil);
-    }
-}
-
-// These methods are required for NativeEventEmitter
+// Required for NativeEventEmitter
 RCT_EXPORT_METHOD(addListener:(NSString *)eventName)
 {
     // Required for NativeEventEmitter
@@ -946,7 +628,225 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
     // Required for NativeEventEmitter
 }
 
-#pragma mark - Helper Methods
+#pragma mark - Private Methods
+
+- (void)setupAudioSessionWithError:(NSError **)error
+{
+    self.audioSession = [AVAudioSession sharedInstance];
+    
+    AVAudioSessionCategory category = AVAudioSessionCategoryPlayback;
+    AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
+    
+    if ([self.config[@"enableBackgroundMode"] boolValue]) {
+        options |= AVAudioSessionCategoryOptionAllowAirPlay;
+        options |= AVAudioSessionCategoryOptionAllowBluetooth;
+        options |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
+    }
+    
+    [self.audioSession setCategory:category withOptions:options error:error];
+    if (*error) return;
+    
+    [self.audioSession setActive:YES error:error];
+}
+
+- (void)startStreamingFromURL:(NSURL *)url
+{
+    NSString *urlString = [url absoluteString];
+    BOOL isHLS = [urlString containsString:@".m3u8"] || [urlString containsString:@"playlist.m3u8"];
+    BOOL isDASH = [urlString containsString:@".mpd"];
+    
+    if (isHLS || isDASH) {
+        [self startAdaptiveStreamFromURL:url];
+    } else {
+        [self startProgressiveStreamFromURL:url];
+    }
+}
+
+- (void)startAdaptiveStreamFromURL:(NSURL *)url
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self removeObservers];
+        
+        NSMutableDictionary *options = [NSMutableDictionary dictionary];
+        NSDictionary *headers = self.config[@"headers"];
+        if (headers) {
+            options[@"AVURLAssetHTTPHeaderFieldsKey"] = headers;
+        }
+        
+        AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:options];
+        self.playerItem = [AVPlayerItem playerItemWithAsset:asset];
+        
+        [self addObserversToPlayerItem];
+        
+        if (!self.player) {
+            self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
+        } else {
+            [self.player replaceCurrentItemWithPlayerItem:self.playerItem];
+        }
+        
+        self.player.automaticallyWaitsToMinimizeStalling = YES;
+        
+        [self setupPeriodicTimeObserver];
+        [self sendEventWithName:@"onStreamStart" body:@{}];
+        [self startStatsTimer];
+    });
+}
+
+- (void)startProgressiveStreamFromURL:(NSURL *)url
+{
+    [self.dataTask cancel];
+    
+    [self.audioBuffer setLength:0];
+    self.bufferStartTime = [[NSDate date] timeIntervalSince1970];
+    self.totalBytesReceived = 0;
+    
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    NSDictionary *headers = self.config[@"headers"];
+    if (headers) {
+        [headers enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
+            [request setValue:value forHTTPHeaderField:key];
+        }];
+    }
+    
+    __weak typeof(self) weakSelf = self;
+    
+    self.dataTask = [self.urlSession dataTaskWithRequest:request
+                                        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            [weakSelf handleStreamError:error];
+            return;
+        }
+        
+        if (data) {
+            [weakSelf processAudioData:data];
+        }
+    }];
+    
+    [self.dataTask resume];
+    [self sendEventWithName:@"onStreamStart" body:@{}];
+}
+
+- (void)processAudioData:(NSData *)data
+{
+    [self.audioBuffer appendData:data];
+    self.totalBytesReceived += data.length;
+    
+    NSInteger bufferSize = [self.config[@"bufferSize"] integerValue] * 1024 ?: 64 * 1024;
+    NSInteger prebufferThreshold = [self.config[@"prebufferThreshold"] integerValue] * 1024 ?: 16 * 1024;
+    
+    if (self.audioBuffer.length >= prebufferThreshold && self.state == PlaybackStateLoading) {
+        [self startPlayback];
+    }
+    
+    BOOL isBuffering = self.state == PlaybackStateBuffering;
+    [self sendEventWithName:@"onStreamBuffer" body:@{@"isBuffering": @(isBuffering)}];
+    
+    if ([self.config[@"enableCache"] boolValue]) {
+        NSString *cacheKey = [self cacheKeyForURL:self.currentUrl];
+        [self.audioCache setObject:[self.audioBuffer copy] forKey:cacheKey cost:self.audioBuffer.length];
+    }
+}
+
+- (void)startPlayback
+{
+    if (!self.playerItem) {
+        NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"tempAudio.mp3"];
+        [self.audioBuffer writeToFile:tempPath atomically:YES];
+        
+        NSURL *fileURL = [NSURL fileURLWithPath:tempPath];
+        AVAsset *asset = [AVAsset assetWithURL:fileURL];
+        self.playerItem = [AVPlayerItem playerItemWithAsset:asset];
+        
+        [self addObserversToPlayerItem];
+        
+        self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
+        [self setupPeriodicTimeObserver];
+    }
+    
+    [self startStatsTimer];
+}
+
+- (void)playFromData:(NSData *)data
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self removeObservers];
+        
+        NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"cachedAudio.mp3"];
+        [data writeToFile:tempPath atomically:YES];
+        
+        NSURL *fileURL = [NSURL fileURLWithPath:tempPath];
+        AVAsset *asset = [AVAsset assetWithURL:fileURL];
+        self.playerItem = [AVPlayerItem playerItemWithAsset:asset];
+        
+        [self addObserversToPlayerItem];
+        
+        if (!self.player) {
+            self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
+        } else {
+            [self.player replaceCurrentItemWithPlayerItem:self.playerItem];
+        }
+        
+        if ([self.config[@"autoPlay"] boolValue]) {
+            [self play];
+        }
+        
+        [self setupPeriodicTimeObserver];
+        [self startStatsTimer];
+    });
+}
+
+- (void)addObserversToPlayerItem
+{
+    if (self.playerItem && !self.hasObservers) {
+        [self.playerItem addObserver:self
+                          forKeyPath:@"status"
+                             options:NSKeyValueObservingOptionNew
+                             context:nil];
+        
+        [self.playerItem addObserver:self
+                          forKeyPath:@"playbackBufferEmpty"
+                             options:NSKeyValueObservingOptionNew
+                             context:nil];
+        
+        [self.playerItem addObserver:self
+                          forKeyPath:@"playbackLikelyToKeepUp"
+                             options:NSKeyValueObservingOptionNew
+                             context:nil];
+        
+        self.hasObservers = YES;
+    }
+}
+
+- (void)removeObservers
+{
+    if (self.playerItem && self.hasObservers) {
+        @try {
+            [self.playerItem removeObserver:self forKeyPath:@"status"];
+            [self.playerItem removeObserver:self forKeyPath:@"playbackBufferEmpty"];
+            [self.playerItem removeObserver:self forKeyPath:@"playbackLikelyToKeepUp"];
+        } @catch (NSException *exception) {
+            NSLog(@"[RNAudioStream] Observer removal warning: %@", exception.reason);
+        }
+        self.hasObservers = NO;
+    }
+}
+
+- (void)setupPeriodicTimeObserver
+{
+    if (self.timeObserver) {
+        [self.player removeTimeObserver:self.timeObserver];
+        self.timeObserver = nil;
+    }
+    
+    __weak typeof(self) weakSelf = self;
+    CMTime interval = CMTimeMakeWithSeconds(0.1, NSEC_PER_SEC);
+    
+    self.timeObserver = [self.player addPeriodicTimeObserverForInterval:interval
+                                                                   queue:dispatch_get_main_queue()
+                                                              usingBlock:^(CMTime time) {
+        [weakSelf updateProgress];
+    }];
+}
 
 - (void)play
 {
@@ -975,17 +875,12 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
     [self.dataTask cancel];
     self.dataTask = nil;
     
-    if (self.playerItem && self.hasObservers) {
-        @try {
-            [self.playerItem removeObserver:self forKeyPath:@"status"];
-            [self.playerItem removeObserver:self forKeyPath:@"playbackBufferEmpty"];
-            [self.playerItem removeObserver:self forKeyPath:@"playbackLikelyToKeepUp"];
-        } @catch (NSException *exception) {
-            // Ignore if observer was already removed
-            NSLog(@"[RNAudioStream] Observer removal warning: %@", exception.reason);
-        }
-        self.hasObservers = NO;
+    if (self.timeObserver) {
+        [self.player removeTimeObserver:self.timeObserver];
+        self.timeObserver = nil;
     }
+    
+    [self removeObservers];
     
     if (self.player) {
         [self.player pause];
@@ -1018,17 +913,6 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
         case PlaybackStateCompleted: return @"completed";
         default: return @"idle";
     }
-}
-
-- (void)startProgressTimer
-{
-    [self.progressTimer invalidate];
-    
-    self.progressTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
-                                                          target:self
-                                                        selector:@selector(updateProgress)
-                                                        userInfo:nil
-                                                         repeats:YES];
 }
 
 - (void)startStatsTimer
@@ -1065,27 +949,28 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
         NSMutableDictionary *stats = [NSMutableDictionary dictionary];
         
         if (self.player && self.player.currentItem) {
-            // Buffered duration
             NSArray *loadedTimeRanges = self.player.currentItem.loadedTimeRanges;
             double bufferedDuration = 0;
+            double bufferedPosition = 0;
+            
             if (loadedTimeRanges.count > 0) {
                 CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
-                if (CMTIME_IS_VALID(timeRange.duration)) {
-                    bufferedDuration = CMTimeGetSeconds(timeRange.duration);
+                if (CMTIME_IS_VALID(timeRange.start) && CMTIME_IS_VALID(timeRange.duration)) {
+                    double start = CMTimeGetSeconds(timeRange.start);
+                    double duration = CMTimeGetSeconds(timeRange.duration);
+                    bufferedDuration = duration;
+                    bufferedPosition = start + duration;
                 }
             }
             
-            // Current and total duration
             CMTime currentTimeValue = self.player.currentTime;
             double currentTime = CMTIME_IS_VALID(currentTimeValue) ? CMTimeGetSeconds(currentTimeValue) : 0;
             CMTime totalTimeValue = self.player.currentItem.duration;
             double totalDuration = CMTIME_IS_VALID(totalTimeValue) && !CMTIME_IS_INDEFINITE(totalTimeValue) ? CMTimeGetSeconds(totalTimeValue) : 0;
             
-            // Network speed calculation
             NSTimeInterval elapsed = [[NSDate date] timeIntervalSince1970] - self.bufferStartTime;
-            double networkSpeed = elapsed > 0 ? (self.totalBytesReceived / elapsed) / 1024 : 0; // KB/s
+            double networkSpeed = elapsed > 0 ? (self.totalBytesReceived / elapsed) / 1024 : 0;
             
-            // Buffer health (0-100)
             double bufferHealth = 100;
             if (self.player.currentItem.playbackBufferEmpty) {
                 bufferHealth = 0;
@@ -1095,33 +980,16 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
                 bufferHealth = 50;
             }
             
-            // Calculate buffer percentage
-            double bufferedPercentage = 0;
-            if (totalDuration > 0 && loadedTimeRanges.count > 0) {
-                CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
-                double startSeconds = CMTIME_IS_VALID(timeRange.start) ? CMTimeGetSeconds(timeRange.start) : 0;
-                double durationSeconds = CMTIME_IS_VALID(timeRange.duration) ? CMTimeGetSeconds(timeRange.duration) : 0;
-                bufferedPercentage = ((startSeconds + durationSeconds) / totalDuration) * 100;
-            }
+            double bufferedPercentage = totalDuration > 0 ? (bufferedPosition / totalDuration) * 100 : 0;
             
             stats[@"bufferedDuration"] = @(bufferedDuration);
             stats[@"playedDuration"] = @(currentTime);
             stats[@"totalDuration"] = @(totalDuration);
             stats[@"networkSpeed"] = @(networkSpeed);
-            stats[@"latency"] = @(0); // Would need ping implementation
+            stats[@"latency"] = @(0);
             stats[@"bufferHealth"] = @(bufferHealth);
-            stats[@"droppedFrames"] = @(0); // Not applicable for audio
-            stats[@"bitRate"] = @(128); // Would need to extract from stream
-            
-            // Additional buffer information
-            double bufferedPosition = 0;
-            if (loadedTimeRanges.count > 0) {
-                CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
-                double start = CMTIME_IS_VALID(timeRange.start) ? CMTimeGetSeconds(timeRange.start) : 0;
-                double duration = CMTIME_IS_VALID(timeRange.duration) ? CMTimeGetSeconds(timeRange.duration) : 0;
-                bufferedPosition = start + duration;
-            }
-            
+            stats[@"droppedFrames"] = @(0);
+            stats[@"bitRate"] = @(128);
             stats[@"bufferedPosition"] = @(bufferedPosition);
             stats[@"currentPosition"] = @(currentTime);
             stats[@"bufferedPercentage"] = @((int)bufferedPercentage);
@@ -1131,66 +999,13 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
         
         [self sendEventWithName:@"onStreamStats" body:@{@"stats": stats}];
     } @catch (NSException *exception) {
-        // Ignore errors for stats
+        // Ignore stats errors
     }
 }
 
 - (NSString *)cacheKeyForURL:(NSString *)url
 {
     return [[url dataUsingEncoding:NSUTF8StringEncoding] base64EncodedStringWithOptions:0];
-}
-
-- (void)playFromData:(NSData *)data
-{
-    // Clean up any existing observers first
-    if (self.playerItem && self.hasObservers) {
-        @try {
-            [self.playerItem removeObserver:self forKeyPath:@"status"];
-            [self.playerItem removeObserver:self forKeyPath:@"playbackBufferEmpty"];
-            [self.playerItem removeObserver:self forKeyPath:@"playbackLikelyToKeepUp"];
-        } @catch (NSException *exception) {
-            // Ignore
-        }
-        self.hasObservers = NO;
-    }
-    
-    NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"cachedAudio.mp3"];
-    [data writeToFile:tempPath atomically:YES];
-    
-    NSURL *fileURL = [NSURL fileURLWithPath:tempPath];
-    AVAsset *asset = [AVAsset assetWithURL:fileURL];
-    self.playerItem = [AVPlayerItem playerItemWithAsset:asset];
-    
-    // Add observers
-    [self.playerItem addObserver:self
-                      forKeyPath:@"status"
-                         options:NSKeyValueObservingOptionNew
-                         context:nil];
-    
-    [self.playerItem addObserver:self
-                      forKeyPath:@"playbackBufferEmpty"
-                         options:NSKeyValueObservingOptionNew
-                         context:nil];
-    
-    [self.playerItem addObserver:self
-                      forKeyPath:@"playbackLikelyToKeepUp"
-                         options:NSKeyValueObservingOptionNew
-                         context:nil];
-    
-    self.hasObservers = YES;
-    
-    if (!self.player) {
-        self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
-    } else {
-        [self.player replaceCurrentItemWithPlayerItem:self.playerItem];
-    }
-    
-    if ([self.config[@"autoPlay"] boolValue]) {
-        [self play];
-    }
-    
-    [self startProgressTimer];
-    [self startStatsTimer];
 }
 
 - (void)handleStreamError:(NSError *)error
@@ -1201,7 +1016,6 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
     NSString *errorMessage = error.localizedDescription ?: @"Unknown error";
     BOOL recoverable = YES;
     
-    // Determine error type based on error code
     switch (error.code) {
         case NSURLErrorNotConnectedToInternet:
         case NSURLErrorNetworkConnectionLost:
@@ -1261,7 +1075,7 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
                 errorMessage = @"Unknown player error";
                 break;
             case AVErrorDecodeFailed:
-            case AVErrorFormatNotSupported:
+            case AVErrorFormatUnsupported:
                 errorCode = @"DECODE_ERROR";
                 errorMessage = @"Audio format not supported";
                 recoverable = NO;
@@ -1293,7 +1107,10 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
 
 #pragma mark - KVO
 
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
+- (void)observeValueForKeyPath:(NSString *)keyPath 
+                      ofObject:(id)object 
+                        change:(NSDictionary *)change 
+                       context:(void *)context
 {
     if ([keyPath isEqualToString:@"status"]) {
         AVPlayerItemStatus status = [[change objectForKey:NSKeyValueChangeNewKey] integerValue];
@@ -1401,7 +1218,6 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
 {
     AVPlayerItem *playerItem = notification.object;
     if (playerItem == self.playerItem) {
-        // Extract metadata if available
         [self extractAndSendMetadata];
     }
 }

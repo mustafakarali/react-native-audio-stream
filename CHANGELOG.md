@@ -36,6 +36,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.5.0] - 2024-01-14
+
+### 🚀 Major iOS Overhaul
+
+#### Fixed
+- 🐛 **Duplicate Method Error**: Removed duplicate `cancelStream:rejecter:` declaration
+- 🐛 **Enum Error**: Fixed `AVErrorFormatNotSupported` → `AVErrorFormatUnsupported`
+- 🔧 **Observer Management**: Proper observer lifecycle with dedicated add/remove methods
+- 💾 **Memory Management**: Added timeObserver property with proper cleanup
+
+#### Added
+- ⚡ **Modern AVPlayer Implementation**: Replaced NSTimer with `addPeriodicTimeObserverForInterval`
+- 🎯 **Auto-Initialize**: Streams can now auto-initialize if not manually initialized
+- 🔍 **Centralized Observer Management**: `addObserversToPlayerItem` / `removeObservers` methods
+- 🎬 **Dedicated Adaptive Streaming**: `startAdaptiveStreamFromURL` for HLS/DASH
+- 🛡️ **Enhanced Error Handling**: `setupAudioSessionWithError` with proper error propagation
+
+#### Improved
+- 📐 **Code Architecture**: Complete restructure with modern Objective-C patterns
+- 🧵 **Thread Safety**: Proper dispatch_async usage for UI operations
+- 🧹 **Code Cleanup**: Removed redundant code and improved readability
+- 🎛️ **Professional Implementation**: Production-ready code quality
+
 ## [1.4.3] - 2024-01-14
 
 ### Documentation
