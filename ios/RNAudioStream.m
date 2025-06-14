@@ -184,58 +184,146 @@ RCT_EXPORT_METHOD(initialize:(NSDictionary *)config
 {
     @try {
         self.config = config ?: @{};
+        NSLog(@"[RNAudioStream] Starting initialization with config: %@", self.config);
         
-        // Configure audio session
+        // Get audio session instance
         AVAudioSession *audioSession = [AVAudioSession sharedInstance];
         NSError *error = nil;
         
-        // Set category first without options
-        BOOL success = [audioSession setCategory:AVAudioSessionCategoryPlayback 
-                                           error:&error];
+        // iOS 18+ specific: Configure audio session step by step
+        // Step 1: Determine the correct category based on usage
+        AVAudioSessionCategory category;
+        BOOL needsRecording = [self.config[@"enableRecording"] boolValue];
+        
+        if (needsRecording) {
+            category = AVAudioSessionCategoryPlayAndRecord;
+            NSLog(@"[RNAudioStream] Using PlayAndRecord category for recording support");
+        } else {
+            category = AVAudioSessionCategoryPlayback;
+            NSLog(@"[RNAudioStream] Using Playback category");
+        }
+        
+        // Step 2: Set mode before category (iOS 18 requirement)
+        AVAudioSessionMode mode = AVAudioSessionModeDefault;
+        if ([self.config[@"voiceProcessing"] boolValue]) {
+            mode = AVAudioSessionModeVoiceChat;
+        }
+        
+        // Step 3: First, deactivate the session to ensure clean state
+        [audioSession setActive:NO error:nil];
+        
+        // Step 4: Set the category without options first (iOS 18 compatibility)
+        BOOL success = [audioSession setCategory:category error:&error];
         
         if (!success || error) {
-            NSLog(@"[RNAudioStream] Failed to set audio category: %@", error);
+            NSLog(@"[RNAudioStream] Failed to set basic category: %@", error);
             reject(@"INITIALIZATION_ERROR", 
                    [NSString stringWithFormat:@"Failed to set audio category: %@", error.localizedDescription], 
                    error);
             return;
         }
         
-        // Now set category with options if background mode is enabled
+        // Step 5: Set mode after category
+        success = [audioSession setMode:mode error:&error];
+        if (!success || error) {
+            NSLog(@"[RNAudioStream] Failed to set mode, using default: %@", error);
+            // Continue with default mode
+            error = nil;
+        }
+        
+        // Step 6: Configure options based on requirements
+        AVAudioSessionCategoryOptions options = 0;
+        
         if ([self.config[@"enableBackgroundMode"] boolValue]) {
-            AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
-            
-            // Add options one by one to avoid conflicts
+            // Build options incrementally for iOS 18
             if (@available(iOS 9.0, *)) {
-                options |= AVAudioSessionCategoryOptionAllowBluetooth;
+                if (needsRecording) {
+                    // For recording, use minimal options
+                    options = AVAudioSessionCategoryOptionAllowBluetooth;
+                } else {
+                    // For playback only
+                    options = AVAudioSessionCategoryOptionMixWithOthers;
+                    options |= AVAudioSessionCategoryOptionAllowBluetooth;
+                }
             }
             
-            success = [audioSession setCategory:AVAudioSessionCategoryPlayback
+            // Try to set category with options
+            success = [audioSession setCategory:category
                                    withOptions:options
                                          error:&error];
             
             if (!success || error) {
-                NSLog(@"[RNAudioStream] Failed to set audio category with options: %@", error);
-                // Try without options as fallback
-                [audioSession setCategory:AVAudioSessionCategoryPlayback error:nil];
+                NSLog(@"[RNAudioStream] Failed to set category with options, trying without: %@", error);
+                // Fallback to category without options
+                error = nil;
+                [audioSession setCategory:category error:nil];
             }
         }
         
-        // Activate audio session
-        success = [audioSession setActive:YES error:&error];
+        // Step 7: Configure additional settings for iOS 18
+        if (@available(iOS 13.0, *)) {
+            // Set preferred input/output settings
+            if (!needsRecording) {
+                // For playback only, optimize for speaker output
+                [audioSession setPreferredOutputNumberOfChannels:2 error:nil];
+            }
+        }
         
-        if (!success || error) {
-            NSLog(@"[RNAudioStream] Failed to activate audio session: %@", error);
-            reject(@"INITIALIZATION_ERROR", 
-                   [NSString stringWithFormat:@"Failed to activate audio session: %@", error.localizedDescription], 
-                   error);
+        // Step 8: Activate the audio session with error checking
+        NSInteger retryCount = 0;
+        const NSInteger maxRetries = 3;
+        BOOL activated = NO;
+        
+        while (!activated && retryCount < maxRetries) {
+            error = nil;
+            success = [audioSession setActive:YES error:&error];
+            
+            if (success && !error) {
+                activated = YES;
+                NSLog(@"[RNAudioStream] Audio session activated successfully on attempt %ld", (long)(retryCount + 1));
+            } else {
+                retryCount++;
+                NSLog(@"[RNAudioStream] Activation attempt %ld failed: %@", (long)retryCount, error);
+                
+                if (retryCount < maxRetries) {
+                    // Wait briefly before retry
+                    [NSThread sleepForTimeInterval:0.1];
+                    
+                    // Try to reset the session
+                    [audioSession setActive:NO error:nil];
+                    
+                    // For iOS 18, try simpler configuration on retry
+                    if (retryCount == 2) {
+                        [audioSession setCategory:AVAudioSessionCategoryPlayback error:nil];
+                        [audioSession setMode:AVAudioSessionModeDefault error:nil];
+                    }
+                }
+            }
+        }
+        
+        if (!activated) {
+            NSString *errorMsg = [NSString stringWithFormat:@"Failed to activate audio session after %ld attempts: %@", 
+                                  (long)maxRetries, error.localizedDescription];
+            NSLog(@"[RNAudioStream] %@", errorMsg);
+            reject(@"INITIALIZATION_ERROR", errorMsg, error);
             return;
+        }
+        
+        // Step 9: Configure notification settings
+        if (@available(iOS 15.0, *)) {
+            [audioSession setPrefersNoInterruptionsFromSystemAlerts:YES error:nil];
         }
         
         self.audioSession = audioSession;
         self.isInitialized = YES;
-        NSLog(@"[RNAudioStream] Audio session initialized successfully");
+        
+        NSLog(@"[RNAudioStream] Initialization completed successfully");
+        NSLog(@"[RNAudioStream] Current category: %@", audioSession.category);
+        NSLog(@"[RNAudioStream] Current mode: %@", audioSession.mode);
+        NSLog(@"[RNAudioStream] Current options: %lu", (unsigned long)audioSession.categoryOptions);
+        
         resolve(@(YES));
+        
     } @catch (NSException *exception) {
         NSLog(@"[RNAudioStream] Initialize exception: %@", exception);
         reject(@"INITIALIZATION_ERROR", exception.reason, nil);
@@ -658,41 +746,104 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
 {
     AVAudioSession *audioSession = [AVAudioSession sharedInstance];
     
-    // First try to set category without options
-    BOOL success = [audioSession setCategory:AVAudioSessionCategoryPlayback error:error];
+    // Determine category based on configuration
+    AVAudioSessionCategory category;
+    BOOL needsRecording = [self.config[@"enableRecording"] boolValue];
+    
+    if (needsRecording) {
+        category = AVAudioSessionCategoryPlayAndRecord;
+        NSLog(@"[RNAudioStream] setupAudioSession: Using PlayAndRecord category");
+    } else {
+        category = AVAudioSessionCategoryPlayback;
+        NSLog(@"[RNAudioStream] setupAudioSession: Using Playback category");
+    }
+    
+    // Deactivate first for clean state
+    [audioSession setActive:NO error:nil];
+    
+    // Set category without options first
+    BOOL success = [audioSession setCategory:category error:error];
     
     if (!success || (error && *error)) {
         NSLog(@"[RNAudioStream] setupAudioSession: Failed to set category: %@", *error);
         return;
     }
     
+    // Set mode
+    AVAudioSessionMode mode = AVAudioSessionModeDefault;
+    if ([self.config[@"voiceProcessing"] boolValue]) {
+        mode = AVAudioSessionModeVoiceChat;
+    }
+    [audioSession setMode:mode error:nil];
+    
     // If background mode is enabled, try with options
     if ([self.config[@"enableBackgroundMode"] boolValue]) {
-        AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
+        AVAudioSessionCategoryOptions options = 0;
         
         if (@available(iOS 9.0, *)) {
-            options |= AVAudioSessionCategoryOptionAllowBluetooth;
+            if (needsRecording) {
+                options = AVAudioSessionCategoryOptionAllowBluetooth;
+            } else {
+                options = AVAudioSessionCategoryOptionMixWithOthers | AVAudioSessionCategoryOptionAllowBluetooth;
+            }
         }
         
-        success = [audioSession setCategory:AVAudioSessionCategoryPlayback 
+        success = [audioSession setCategory:category 
                                withOptions:options 
                                      error:error];
         
         if (!success || (error && *error)) {
             NSLog(@"[RNAudioStream] setupAudioSession: Failed with options, falling back: %@", *error);
             // Fallback to no options
-            [audioSession setCategory:AVAudioSessionCategoryPlayback error:nil];
+            [audioSession setCategory:category error:nil];
             if (error) *error = nil; // Clear error for fallback
         }
     }
     
-    // Activate session
-    success = [audioSession setActive:YES error:error];
-    if (!success || (error && *error)) {
-        NSLog(@"[RNAudioStream] setupAudioSession: Failed to activate: %@", *error);
-    } else {
+    // Configure additional settings for iOS 18
+    if (@available(iOS 13.0, *)) {
+        if (!needsRecording) {
+            [audioSession setPreferredOutputNumberOfChannels:2 error:nil];
+        }
+    }
+    
+    // Activate session with retry logic
+    NSInteger retryCount = 0;
+    const NSInteger maxRetries = 3;
+    BOOL activated = NO;
+    
+    while (!activated && retryCount < maxRetries) {
+        NSError *activationError = nil;
+        success = [audioSession setActive:YES error:&activationError];
+        
+        if (success && !activationError) {
+            activated = YES;
+            NSLog(@"[RNAudioStream] setupAudioSession: Activated on attempt %ld", (long)(retryCount + 1));
+        } else {
+            retryCount++;
+            NSLog(@"[RNAudioStream] setupAudioSession: Activation attempt %ld failed: %@", (long)retryCount, activationError);
+            
+            if (retryCount < maxRetries) {
+                [NSThread sleepForTimeInterval:0.1];
+                [audioSession setActive:NO error:nil];
+                
+                // Simplify configuration on last retry
+                if (retryCount == 2) {
+                    [audioSession setCategory:AVAudioSessionCategoryPlayback error:nil];
+                    [audioSession setMode:AVAudioSessionModeDefault error:nil];
+                }
+            } else if (error) {
+                *error = activationError;
+            }
+        }
+    }
+    
+    if (activated) {
         self.audioSession = audioSession;
         NSLog(@"[RNAudioStream] setupAudioSession: Success");
+        if (error) *error = nil;
+    } else {
+        NSLog(@"[RNAudioStream] setupAudioSession: Failed after all retries");
     }
 }
 

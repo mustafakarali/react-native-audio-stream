@@ -36,7 +36,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
-## [1.5.2] - 2024-01-14
+## [1.5.3] - 2025-01-20
+
+### Fixed
+- iOS 18.5 OSStatus error -50 fix with completely rewritten audio session initialization
+- Added retry mechanism for audio session activation (up to 3 attempts)
+- Improved error handling with progressive fallback strategy
+- Enhanced logging for better debugging
+
+### Added
+- `enableRecording` configuration option to properly set AVAudioSessionCategoryPlayAndRecord
+- `voiceProcessing` configuration option for voice chat mode
+- iOS 18+ specific optimizations and compatibility improvements
+- Automatic session deactivation before configuration for clean state
+
+### Changed
+- Audio session category is now dynamically determined based on usage requirements
+- Mode is set before category activation (iOS 18 requirement)
+- Options are built incrementally with proper fallback mechanisms
+- Better separation between playback-only and recording configurations
+
+## [1.5.2] - 2025-01-19
 
 ### Fixed
 - 🐛 **iOS OSStatus -50 Error**: Fixed paramErr in AVAudioSession configuration
@@ -124,207 +144,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🍎 **React Native 0.79 Compatibility**: Fixed build errors for RN 0.79
 
 ### Technical Changes
-- Added internal helper methods `play` and `pause` for iOS
-- Cleaned up KVO implementation
-- Fixed method visibility issues
-
-## [1.4.0] - 2024-01-14
-
-### Added
-- 🎬 **Full HLS/DASH Support**: Proper implementation for both Android and iOS with native player support
-- 🎵 **PCM and FLAC Support**: Added support for PCM and FLAC audio formats
-- 🔧 **Enhanced Error Handling**: Detailed error codes and recovery options with retry functionality
-- 📊 **Improved Metadata Support**: Better metadata extraction and display
-- 🐛 **Fixed cancelStream**: Now properly cancels stream and sets state to IDLE on both platforms
-- 📈 **Enhanced Stream Info**: Added network speed and buffer health to stream info display
-- 🚨 **Detailed Error Logging**: More comprehensive error information in logs and alerts
-- 🔍 **KVO Implementation**: Added proper Key-Value Observing for iOS player status
-
-### Fixed
-- 🐛 Fixed CMake build errors for new architecture (Android)
-- 🐛 Fixed cancelStream implementation on both platforms
-- 🐛 Fixed HLS buffering issues - now uses native player support
-- 🐛 Fixed metadata not displaying properly
-- 🐛 Fixed background mode warning
-- 🐛 Fixed error recovery flow with proper retry mechanism
-- 🐛 Fixed iOS observer pattern for player item status
-
-### Improved
-- 🚀 HLS streams now use native player support for better performance
-- 📱 Better error recovery with retry options in alerts
-- 🎯 More accurate buffer percentage for live streams
-- 📊 Enhanced demo app with better error handling
-- 🌐 Better protocol detection (HLS, DASH, MP3, etc.)
-- 📝 More detailed error messages with error codes
-
-### Technical Changes
-- Added `extractAndSendMetadata` method for iOS
-- Improved `handlePlayerError` and `handleStreamError` methods
-- Added HLS-specific player configuration
-- Enhanced error code mapping for both platforms
-
-## [1.3.9] - 2024-01-14
-
-### Added
-- ✨ `cancelStream()` method for immediate stream cancellation
-- 📊 Buffer events history tracking in demo app
-- 🎛️ Advanced stream controls (network priority, playback rate) in demo app
-- 🌐 Network status monitoring with real-time indicators
-- 📈 Enhanced stream info display (protocol detection, latency, played/buffered duration)
-- 🎚️ Dynamic playback speed control with visual feedback
-- 📝 Helper functions for stream type detection and byte formatting
-- 🎵 Additional test streams (BBC Radio 1, HLS test stream)
-
-### Fixed
-- 🐛 Fixed undefined `cancelStream` error in TypeScript
-- 🐛 Added missing `cancelStream` to IAudioStream and NativeModule interfaces
-
-### Improved
-- 🚀 Better HLS/DASH stream support
-- 📱 Enhanced demo app with more comprehensive buffer statistics
-- 🎨 Improved UI with better visual feedback for buffer states
-
-## [1.3.8] - 2024-01-13
-
-### Added
-- 🎬 HLS/DASH adaptive streaming support
-- 📊 Live stream buffer percentage calculation (30-second window)
-- 🔧 Media source detection for .m3u8 and .mpd files
-
-### Fixed
-- 🐛 Fixed buffer percentage for live streams without duration
-- 🐛 Fixed background mode toggle error
-
-### Improved
-- 📈 Better buffer statistics visualization
-- 🎯 Enhanced error recovery for live streams
-
-## [1.3.7] - 2024-01-13
-
-### Added
-- ☕ Buy Me a Coffee support integration
-- 💰 Support badges and links in documentation
-
-## [1.3.6] - 2024-01-13
-
-### Added
-- ❌ `cancelStream` method for both Android and iOS
-- 📊 Detailed buffer statistics in demo app
-- 🎯 Real-time buffer monitoring with chunk visualization
-
-### Fixed
-- 🐛 Fixed NativeEventEmitter warnings
-- 🐛 Fixed cache size calculation (now shows used space)
-- 🐛 Fixed buffer percentage calculation
-
-### Improved
-- 🎨 Enhanced demo app UI with buffer visualization
-- 📱 Better error state recovery
-
-## [1.3.5] - 2024-01-12
-
-### Fixed
-- 🐛 Fixed React Native 0.80 compatibility issues
-- 🐛 Fixed codegenConfig for New Architecture support
-
-## [1.3.4] - 2024-01-12
-
-### Added
-- 🏗️ React Native 0.80 New Architecture support
-- 🔧 TurboModule and Fabric compatibility
-
-## [1.3.3] - 2024-01-11
-
-### Fixed
-- 🐛 Fixed cancel/stopStream state (now sets to IDLE)
-- 🐛 Fixed buffer percentage calculation
-- 🐛 Fixed cache size display
-- 🐛 Added LoadControl for better buffering
-
-### Added
-- 🎛️ Background mode toggle in demo UI
-- 📊 Detailed buffer statistics
-
-## [1.3.2] - 2024-01-10
-
-### Fixed
-- 🍎 Critical iOS fixes:
-  - Fixed CMTime crashes with validation checks
-  - Fixed KVO observer safety
-  - Enhanced audio session configuration
-  - Added codegenConfig for RN compatibility
-
-## [1.3.1] - 2024-01-10
-
-### Fixed
-- 🍎 iOS Podspec name correction
-- 🍎 Fixed folly_compiler_flags undefined error
-- 🍎 Added missing pod dependencies
-
-## [1.3.0] - 2024-01-09
-
-### Added
-- 📱 Comprehensive BufferDemo example app
-- 📊 Real-time buffer visualization
-- 🎯 Stream health monitoring
-- 📚 Detailed documentation and examples
-
-## [1.2.2] - 2024-01-08
-
-### Fixed
-- 🔧 Thread safety improvements
-- 🐛 Android build fixes
-
-## [1.2.1] - 2024-01-08
-
-### Fixed
-- 🐛 Additional Android compatibility fixes
-
-## [1.2.0] - 2024-01-08
-
-### Added
-- 🎯 Major feature updates
-- 📊 Enhanced statistics
-- 🔧 Improved error handling
-
-## [1.1.0] - 2024-01-07
-
-### Added
-- ✨ New streaming features
-- 📱 Platform-specific enhancements
-
-## [1.0.4] - 2024-01-06
-
-### Fixed
-- 🐛 Android build issues
-
-## [1.0.3] - 2024-01-06
-
-### Fixed
-- 🐛 Additional Android fixes
-
-## [1.0.2] - 2024-01-06
-
-### Fixed
-- 🐛 Android namespace issues
-- 🐛 Gradle configuration fixes
-
-## [1.0.1] - 2024-01-06
-
-### Fixed
-- 🐛 TypeScript build errors
-- 🐛 Android compatibility issues
-
-## [1.0.0] - 2024-01-06
-
-### Added
-- 🎉 Initial release
-- 🎵 Real-time audio streaming
-- 📱 iOS and Android support
-- 🔧 TypeScript support
-- 🎛️ Advanced playback controls
-- 📊 Statistics and monitoring
-- 🎚️ Equalizer support
-- 💾 Smart caching
-- 🔄 Network resilience
-- 🎯 Background playback 
+- Added internal helper methods `play` and `
