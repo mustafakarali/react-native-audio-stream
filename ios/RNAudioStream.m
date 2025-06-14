@@ -447,10 +447,7 @@ RCT_EXPORT_METHOD(play:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        if (self.player) {
-            [self.player play];
-            [self updateState:PlaybackStatePlaying];
-        }
+        [self play];
         resolve(@(YES));
     } @catch (NSException *exception) {
         reject(@"PLAY_ERROR", exception.reason, nil);
@@ -461,10 +458,7 @@ RCT_EXPORT_METHOD(pause:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        if (self.player) {
-            [self.player pause];
-            [self updateState:PlaybackStatePaused];
-        }
+        [self pause];
         resolve(@(YES));
     } @catch (NSException *exception) {
         reject(@"PAUSE_ERROR", exception.reason, nil);
@@ -927,6 +921,22 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
 
 #pragma mark - Helper Methods
 
+- (void)play
+{
+    if (self.player) {
+        [self.player play];
+        [self updateState:PlaybackStatePlaying];
+    }
+}
+
+- (void)pause
+{
+    if (self.player) {
+        [self.player pause];
+        [self updateState:PlaybackStatePaused];
+    }
+}
+
 - (void)cleanup
 {
     [self.progressTimer invalidate];
@@ -1245,8 +1255,7 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
                     [self sendEventWithName:@"onStreamStart" body:@{}];
                     [self extractAndSendMetadata];
                     if ([self.config[@"autoPlay"] boolValue]) {
-                        [self.player play];
-                        [self updateState:PlaybackStatePlaying];
+                        [self play];
                     }
                 }
                 break;
@@ -1306,42 +1315,7 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
     }
 }
 
-#pragma mark - KVO
 
-- (void)observeValueForKeyPath:(NSString *)keyPath
-                      ofObject:(id)object
-                        change:(NSDictionary *)change
-                       context:(void *)context
-{
-    if ([keyPath isEqualToString:@"status"]) {
-        AVPlayerItemStatus status = [[change objectForKey:NSKeyValueChangeNewKey] integerValue];
-        
-        switch (status) {
-            case AVPlayerItemStatusReadyToPlay:
-                if ([self.config[@"autoPlay"] boolValue] && self.state != PlaybackStatePlaying) {
-                    [self play];
-                }
-                break;
-                
-            case AVPlayerItemStatusFailed:
-                [self handleStreamError:self.playerItem.error];
-                break;
-                
-            default:
-                break;
-        }
-    } else if ([keyPath isEqualToString:@"playbackBufferEmpty"]) {
-        if (self.playerItem.playbackBufferEmpty) {
-            [self updateState:PlaybackStateBuffering];
-            [self sendEventWithName:@"onStreamBuffer" body:@{@"isBuffering": @(YES)}];
-        }
-    } else if ([keyPath isEqualToString:@"playbackLikelyToKeepUp"]) {
-        if (self.playerItem.playbackLikelyToKeepUp && self.state == PlaybackStateBuffering) {
-            [self updateState:PlaybackStatePlaying];
-            [self sendEventWithName:@"onStreamBuffer" body:@{@"isBuffering": @(NO)}];
-        }
-    }
-}
 
 #pragma mark - Notifications
 

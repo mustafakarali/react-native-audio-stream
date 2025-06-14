@@ -36,6 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.4.1] - 2024-01-14
+
+### Fixed
+- 🍎 **iOS Build Error**: Fixed missing `play` and `pause` internal methods
+- 🍎 **Duplicate KVO Method**: Removed duplicate `observeValueForKeyPath` implementation
+- 🍎 **React Native 0.79 Compatibility**: Fixed build errors for RN 0.79
+
+### Technical Changes
+- Added internal helper methods `play` and `pause` for iOS
+- Cleaned up KVO implementation
+- Fixed method visibility issues
+
 ## [1.4.0] - 2024-01-14
 
 ### Added
