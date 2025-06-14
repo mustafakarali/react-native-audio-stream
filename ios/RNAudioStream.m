@@ -74,6 +74,7 @@ RCT_EXPORT_MODULE()
         self.equalizerBands = [NSMutableArray new];
         self.state = PlaybackStateIdle;
         self.isInitialized = NO;
+        self.config = @{};
         
         // Initialize cache
         self.audioCache = [[NSCache alloc] init];
@@ -182,16 +183,16 @@ RCT_EXPORT_METHOD(initialize:(NSDictionary *)config
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        self.config = config;
+        self.config = config ?: @{};
         
         // Configure audio session
         self.audioSession = [AVAudioSession sharedInstance];
         NSError *error = nil;
         
-        AVAudioSessionCategory category = AVAudioSessionCategoryPlayback;
+        NSString *category = AVAudioSessionCategoryPlayback;
         AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
         
-        if ([config[@"enableBackgroundMode"] boolValue]) {
+        if ([self.config[@"enableBackgroundMode"] boolValue]) {
             options |= AVAudioSessionCategoryOptionAllowAirPlay;
             options |= AVAudioSessionCategoryOptionAllowBluetooth;
             options |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
@@ -202,20 +203,27 @@ RCT_EXPORT_METHOD(initialize:(NSDictionary *)config
                                  error:&error];
         
         if (error) {
-            reject(@"INITIALIZATION_ERROR", @"Failed to configure audio session", error);
+            NSLog(@"[RNAudioStream] Audio session category error: %@", error);
+            reject(@"INITIALIZATION_ERROR", 
+                   [NSString stringWithFormat:@"Failed to configure audio session: %@", error.localizedDescription], 
+                   error);
             return;
         }
         
         [self.audioSession setActive:YES error:&error];
         
         if (error) {
-            reject(@"INITIALIZATION_ERROR", @"Failed to activate audio session", error);
+            NSLog(@"[RNAudioStream] Audio session activation error: %@", error);
+            reject(@"INITIALIZATION_ERROR", 
+                   [NSString stringWithFormat:@"Failed to activate audio session: %@", error.localizedDescription], 
+                   error);
             return;
         }
         
         self.isInitialized = YES;
         resolve(@(YES));
     } @catch (NSException *exception) {
+        NSLog(@"[RNAudioStream] Initialize exception: %@", exception);
         reject(@"INITIALIZATION_ERROR", exception.reason, nil);
     }
 }
@@ -250,7 +258,9 @@ RCT_EXPORT_METHOD(startStream:(NSString *)url
         }
         
         self.currentUrl = url;
-        self.config = config ?: self.config;
+        if (config) {
+            self.config = config;
+        }
         
         [self updateState:PlaybackStateLoading];
         
@@ -258,7 +268,7 @@ RCT_EXPORT_METHOD(startStream:(NSString *)url
         NSString *cacheKey = [self cacheKeyForURL:url];
         NSData *cachedData = [self.audioCache objectForKey:cacheKey];
         
-        if (cachedData && [config[@"enableCache"] boolValue]) {
+        if (cachedData && [self.config[@"enableCache"] boolValue]) {
             [self playFromData:cachedData];
             resolve(@(YES));
             return;
@@ -634,7 +644,7 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
 {
     self.audioSession = [AVAudioSession sharedInstance];
     
-    AVAudioSessionCategory category = AVAudioSessionCategoryPlayback;
+    NSString *category = AVAudioSessionCategoryPlayback;
     AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
     
     if ([self.config[@"enableBackgroundMode"] boolValue]) {
@@ -644,9 +654,15 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
     }
     
     [self.audioSession setCategory:category withOptions:options error:error];
-    if (*error) return;
+    if (*error) {
+        NSLog(@"[RNAudioStream] setupAudioSession category error: %@", *error);
+        return;
+    }
     
     [self.audioSession setActive:YES error:error];
+    if (*error) {
+        NSLog(@"[RNAudioStream] setupAudioSession activation error: %@", *error);
+    }
 }
 
 - (void)startStreamingFromURL:(NSURL *)url

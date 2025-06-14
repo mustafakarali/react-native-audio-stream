@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.5.1] - 2024-01-14
+
+### Fixed
+- 🐛 **iOS Audio Session Error**: Fixed `NSOSStatusErrorDomain` initialization error
+- 🔧 **Type Fixes**: AVAudioSessionCategory now uses string literal correctly
+- 📝 **Better Error Logging**: Added detailed NSLog for debugging audio session issues
+- ✅ **Nil Safety**: Added nil checks for config dictionary
+- 🎯 **Config Initialization**: Initialize config as empty dictionary in init
+
 ## [1.5.0] - 2024-01-14
 
 ### 🚀 Major iOS Overhaul
