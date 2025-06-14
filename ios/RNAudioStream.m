@@ -1,5 +1,7 @@
 #import "RNAudioStream.h"
 #import <AVFoundation/AVFoundation.h>
+#import <CoreMedia/CoreMedia.h>
+#import <MediaPlayer/MediaPlayer.h>
 #import <React/RCTLog.h>
 #import <React/RCTConvert.h>
 
@@ -157,6 +159,18 @@ RCT_EXPORT_MODULE()
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(playerItemDidReachEnd:)
                                                  name:AVPlayerItemDidPlayToEndTimeNotification
+                                               object:nil];
+    
+    // Notification for metadata changes
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(playerItemNewAccessLogEntry:)
+                                                 name:AVPlayerItemNewAccessLogEntryNotification
+                                               object:nil];
+    
+    // Notification for error logs
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(playerItemNewErrorLogEntry:)
+                                                 name:AVPlayerItemNewErrorLogEntryNotification
                                                object:nil];
 }
 
@@ -409,12 +423,9 @@ RCT_EXPORT_METHOD(startStream:(NSString *)url
         // Create player
         self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
         
-        if ([self.config[@"autoPlay"] boolValue]) {
-            [self play];
-        }
+        // Don't call play here, let the observer handle it when ready
     }
     
-    [self updateState:PlaybackStatePlaying];
     [self startProgressTimer];
     [self startStatsTimer];
 }
@@ -435,11 +446,27 @@ RCT_EXPORT_METHOD(cancelStream:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        [self cleanup];
-        [self updateState:PlaybackStateIdle];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.player) {
+                [self.player pause];
+                [self.player replaceCurrentItemWithPlayerItem:nil];
+            }
+            
+            [self.progressTimer invalidate];
+            self.progressTimer = nil;
+            
+            [self.statsTimer invalidate];
+            self.statsTimer = nil;
+            
+            [self.dataTask cancel];
+            self.dataTask = nil;
+            
+            self.currentUrl = nil;
+            [self updateState:PlaybackStateIdle];
+        });
         resolve(@(YES));
     } @catch (NSException *exception) {
-        reject(@"CANCEL_ERROR", exception.reason, nil);
+        reject(@"CANCEL_ERROR", @"Failed to cancel stream", nil);
     }
 }
 
@@ -955,13 +982,19 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
             [self.playerItem removeObserver:self forKeyPath:@"playbackLikelyToKeepUp"];
         } @catch (NSException *exception) {
             // Ignore if observer was already removed
+            NSLog(@"[RNAudioStream] Observer removal warning: %@", exception.reason);
         }
         self.hasObservers = NO;
     }
     
-    [self.player pause];
+    if (self.player) {
+        [self.player pause];
+        [self.player replaceCurrentItemWithPlayerItem:nil];
+    }
+    
     self.player = nil;
     self.playerItem = nil;
+    self.currentUrl = nil;
     
     [self.audioBuffer setLength:0];
 }
@@ -1109,6 +1142,18 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
 
 - (void)playFromData:(NSData *)data
 {
+    // Clean up any existing observers first
+    if (self.playerItem && self.hasObservers) {
+        @try {
+            [self.playerItem removeObserver:self forKeyPath:@"status"];
+            [self.playerItem removeObserver:self forKeyPath:@"playbackBufferEmpty"];
+            [self.playerItem removeObserver:self forKeyPath:@"playbackLikelyToKeepUp"];
+        } @catch (NSException *exception) {
+            // Ignore
+        }
+        self.hasObservers = NO;
+    }
+    
     NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"cachedAudio.mp3"];
     [data writeToFile:tempPath atomically:YES];
     
@@ -1134,13 +1179,16 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
     
     self.hasObservers = YES;
     
-    self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
+    if (!self.player) {
+        self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
+    } else {
+        [self.player replaceCurrentItemWithPlayerItem:self.playerItem];
+    }
     
     if ([self.config[@"autoPlay"] boolValue]) {
         [self play];
     }
     
-    [self updateState:PlaybackStatePlaying];
     [self startProgressTimer];
     [self startStatsTimer];
 }
@@ -1315,8 +1363,6 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
     }
 }
 
-
-
 #pragma mark - Notifications
 
 - (void)handleInterruption:(NSNotification *)notification
@@ -1349,6 +1395,30 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
     [self updateState:PlaybackStateCompleted];
     [self sendEventWithName:@"onStreamEnd" body:@{}];
     [self cleanup];
+}
+
+- (void)playerItemNewAccessLogEntry:(NSNotification *)notification
+{
+    AVPlayerItem *playerItem = notification.object;
+    if (playerItem == self.playerItem) {
+        // Extract metadata if available
+        [self extractAndSendMetadata];
+    }
+}
+
+- (void)playerItemNewErrorLogEntry:(NSNotification *)notification
+{
+    AVPlayerItem *playerItem = notification.object;
+    if (playerItem == self.playerItem) {
+        AVPlayerItemErrorLog *errorLog = playerItem.errorLog;
+        NSArray *errorLogEvents = errorLog.events;
+        
+        if (errorLogEvents.count > 0) {
+            AVPlayerItemErrorLogEvent *errorEvent = errorLogEvents.lastObject;
+            NSLog(@"[RNAudioStream] Player error log: URI=%@, Error=%@", 
+                  errorEvent.URI, errorEvent.errorComment);
+        }
+    }
 }
 
 @end 

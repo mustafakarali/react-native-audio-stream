@@ -36,6 +36,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.4.2] - 2024-01-14
+
+### Added
+- 🍎 **iOS Enhancements**: Complete feature parity with Android
+- 📝 Error log notification handler for better debugging
+- 🔧 CoreMedia and MediaPlayer framework imports
+- 🎯 Improved memory management in playFromData
+
+### Fixed
+- 🍎 Fixed playFromData to properly clean up existing observers
+- 🍎 Fixed startPlayback to not call play prematurely
+- 🍎 Enhanced cancelStream with proper cleanup sequence
+- 🍎 Better player state management
+
+### Improved
+- 🚀 iOS now has complete feature parity with Android
+- 📊 Better error logging with AVPlayerItemErrorLog
+- 🔍 More robust observer management
+- 💾 Improved memory management patterns
+
 ## [1.4.1] - 2024-01-14
 
 ### Fixed
