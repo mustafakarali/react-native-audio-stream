@@ -163,6 +163,8 @@ const App: React.FC = () => {
   const [networkSpeed, setNetworkSpeed] = useState(0);
   const [bufferHealth, setBufferHealth] = useState(100);
   const [isLoading, setIsLoading] = useState(false);
+  const [enableBackgroundMode, setEnableBackgroundMode] = useState(true);
+  const [detailedStats, setDetailedStats] = useState<any>(null);
 
   // Animation refs
   const bufferHealthAnimation = useRef(new Animated.Value(100)).current;
@@ -208,11 +210,13 @@ const App: React.FC = () => {
         bufferSize: 16,  // Smaller buffer for faster start
         prebufferThreshold: 8,  // Lower threshold
         maxBufferSize: 128,  // Smaller max buffer
-        enableBackgroundMode: true,
+        enableBackgroundMode,
         maintainAudioFocus: true,
         logLevel: 'INFO',
         reconnectAttempts: 3,
         reconnectDelay: 1000,
+        enableCache: true,
+        cacheSize: 50, // 50MB cache
       });
       
       // Add event listeners
@@ -241,6 +245,7 @@ const App: React.FC = () => {
         const stats = streamStats.stats;
         if (stats) {
           setStats(stats);
+          setDetailedStats(stats);
           setNetworkSpeed(stats.networkSpeed || 0);
           setBufferHealth(stats.bufferHealth || 0);
           
@@ -529,6 +534,65 @@ const App: React.FC = () => {
                 <Text style={styles.metadataText}>
                   💿 Album: {metadata.album || 'Unknown'}
                 </Text>
+              </View>
+            )}
+
+            {/* Background Mode Toggle */}
+            <View style={styles.section}>
+              <View style={styles.toggleContainer}>
+                <Text style={styles.sectionTitle}>Background Mode</Text>
+                <TouchableOpacity
+                  style={[styles.toggleButton, enableBackgroundMode && styles.toggleButtonActive]}
+                  onPress={() => setEnableBackgroundMode(!enableBackgroundMode)}
+                >
+                  <Text style={styles.toggleText}>
+                    {enableBackgroundMode ? 'Enabled' : 'Disabled'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Detailed Buffer Information */}
+            {detailedStats && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Detailed Buffer Information</Text>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Buffered Position:</Text>
+                  <Text style={styles.detailValue}>
+                    {formatTime(detailedStats.bufferedPosition || 0)}
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Current Position:</Text>
+                  <Text style={styles.detailValue}>
+                    {formatTime(detailedStats.currentPosition || 0)}
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Buffer Percentage:</Text>
+                  <Text style={styles.detailValue}>
+                    {detailedStats.bufferedPercentage || 0}%
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Is Buffering:</Text>
+                  <Text style={[styles.detailValue, 
+                    detailedStats.isBuffering && { color: '#FF5722' }
+                  ]}>
+                    {detailedStats.isBuffering ? 'Yes ⏳' : 'No ✅'}
+                  </Text>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Play When Ready:</Text>
+                  <Text style={styles.detailValue}>
+                    {detailedStats.playWhenReady ? 'Yes' : 'No'}
+                  </Text>
+                </View>
               </View>
             )}
 
@@ -922,6 +986,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginVertical: 2,
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  toggleButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#E0E0E0',
+  },
+  toggleButtonActive: {
+    backgroundColor: '#4CAF50',
+  },
+  toggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#666',
+    flex: 1,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+    textAlign: 'right',
   },
 });
 

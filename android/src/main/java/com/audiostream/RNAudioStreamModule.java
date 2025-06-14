@@ -41,6 +41,8 @@ import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
 import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor;
 import com.google.android.exoplayer2.upstream.cache.SimpleCache;
 import com.google.android.exoplayer2.util.Util;
+import com.google.android.exoplayer2.DefaultLoadControl;
+import com.google.android.exoplayer2.LoadControl;
 
 import java.io.File;
 import java.util.HashMap;
@@ -166,10 +168,22 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
         mainHandler.post(() -> {
             DefaultTrackSelector trackSelector = new DefaultTrackSelector(reactContext);
             
+            // Configure load control for better buffering
+            LoadControl loadControl = new DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        15000,  // Min buffer 15 seconds
+                        60000,  // Max buffer 60 seconds
+                        2500,   // Playback buffer 2.5 seconds
+                        5000    // Rebuffer 5 seconds
+                    )
+                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .build();
+            
             player = new ExoPlayer.Builder(reactContext)
                     .setTrackSelector(trackSelector)
                     .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
                     .setBandwidthMeter(bandwidthMeter)
+                    .setLoadControl(loadControl)
                     .build();
 
             // Setup audio attributes
@@ -290,7 +304,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     public void stopStream(Promise promise) {
         try {
             cleanup();
-            updateState(PlaybackState.STOPPED);
+            updateState(PlaybackState.IDLE); // Change to IDLE instead of STOPPED
             promise.resolve(true);
         } catch (Exception e) {
             Log.e(TAG, "Failed to stop stream", e);
@@ -451,8 +465,12 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     public void getBufferedPercentage(Promise promise) {
         try {
             int percentage = 0;
-            if (player != null) {
-                percentage = player.getBufferedPercentage();
+            if (player != null && player.getDuration() != C.TIME_UNSET) {
+                long bufferedPosition = player.getBufferedPosition();
+                long duration = player.getDuration();
+                if (duration > 0) {
+                    percentage = (int) ((bufferedPosition * 100) / duration);
+                }
             }
             promise.resolve(percentage);
         } catch (Exception e) {
@@ -498,6 +516,14 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                 stats.putDouble("bufferHealth", bufferHealth);
                 stats.putDouble("droppedFrames", 0); // Not applicable for audio
                 stats.putDouble("bitRate", bandwidthMeter.getBitrateEstimate() / 1000); // Convert to kbps
+                
+                // Additional buffer information
+                stats.putDouble("bufferedPosition", player.getBufferedPosition() / 1000.0);
+                stats.putDouble("currentPosition", currentPosition / 1000.0);
+                stats.putInt("bufferedPercentage", player.getDuration() > 0 ? 
+                    (int) ((player.getBufferedPosition() * 100) / player.getDuration()) : 0);
+                stats.putBoolean("isBuffering", player.getPlaybackState() == Player.STATE_BUFFERING);
+                stats.putBoolean("playWhenReady", player.getPlayWhenReady());
             }
             
             promise.resolve(stats);
@@ -580,13 +606,34 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
         try {
             long size = 0;
             if (cache != null) {
-                size = cache.getCacheSpace();
+                // Get actual cache size used, not available space
+                File cacheDir = new File(reactContext.getCacheDir(), "audio_cache");
+                if (cacheDir.exists()) {
+                    size = getFolderSize(cacheDir);
+                }
             }
             promise.resolve((double) size);
         } catch (Exception e) {
             Log.e(TAG, "Failed to get cache size", e);
             promise.reject("CACHE_ERROR", "Failed to get cache size", e);
         }
+    }
+    
+    private long getFolderSize(File folder) {
+        long size = 0;
+        if (folder.exists()) {
+            File[] files = folder.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isFile()) {
+                        size += file.length();
+                    } else {
+                        size += getFolderSize(file);
+                    }
+                }
+            }
+        }
+        return size;
     }
 
     @ReactMethod

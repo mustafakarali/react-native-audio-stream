@@ -874,11 +874,78 @@ RCT_EXPORT_METHOD(setAudioSessionCategory:(NSString *)category
 
 - (void)updateStats
 {
-    [self getStats:^(NSDictionary *stats) {
+    @try {
+        NSMutableDictionary *stats = [NSMutableDictionary dictionary];
+        
+        if (self.player && self.player.currentItem) {
+            // Buffered duration
+            NSArray *loadedTimeRanges = self.player.currentItem.loadedTimeRanges;
+            double bufferedDuration = 0;
+            if (loadedTimeRanges.count > 0) {
+                CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
+                if (CMTIME_IS_VALID(timeRange.duration)) {
+                    bufferedDuration = CMTimeGetSeconds(timeRange.duration);
+                }
+            }
+            
+            // Current and total duration
+            CMTime currentTimeValue = self.player.currentTime;
+            double currentTime = CMTIME_IS_VALID(currentTimeValue) ? CMTimeGetSeconds(currentTimeValue) : 0;
+            CMTime totalTimeValue = self.player.currentItem.duration;
+            double totalDuration = CMTIME_IS_VALID(totalTimeValue) && !CMTIME_IS_INDEFINITE(totalTimeValue) ? CMTimeGetSeconds(totalTimeValue) : 0;
+            
+            // Network speed calculation
+            NSTimeInterval elapsed = [[NSDate date] timeIntervalSince1970] - self.bufferStartTime;
+            double networkSpeed = elapsed > 0 ? (self.totalBytesReceived / elapsed) / 1024 : 0; // KB/s
+            
+            // Buffer health (0-100)
+            double bufferHealth = 100;
+            if (self.player.currentItem.playbackBufferEmpty) {
+                bufferHealth = 0;
+            } else if (self.player.currentItem.playbackLikelyToKeepUp) {
+                bufferHealth = 100;
+            } else {
+                bufferHealth = 50;
+            }
+            
+            // Calculate buffer percentage
+            double bufferedPercentage = 0;
+            if (totalDuration > 0 && loadedTimeRanges.count > 0) {
+                CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
+                double startSeconds = CMTIME_IS_VALID(timeRange.start) ? CMTimeGetSeconds(timeRange.start) : 0;
+                double durationSeconds = CMTIME_IS_VALID(timeRange.duration) ? CMTimeGetSeconds(timeRange.duration) : 0;
+                bufferedPercentage = ((startSeconds + durationSeconds) / totalDuration) * 100;
+            }
+            
+            stats[@"bufferedDuration"] = @(bufferedDuration);
+            stats[@"playedDuration"] = @(currentTime);
+            stats[@"totalDuration"] = @(totalDuration);
+            stats[@"networkSpeed"] = @(networkSpeed);
+            stats[@"latency"] = @(0); // Would need ping implementation
+            stats[@"bufferHealth"] = @(bufferHealth);
+            stats[@"droppedFrames"] = @(0); // Not applicable for audio
+            stats[@"bitRate"] = @(128); // Would need to extract from stream
+            
+            // Additional buffer information
+            double bufferedPosition = 0;
+            if (loadedTimeRanges.count > 0) {
+                CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
+                double start = CMTIME_IS_VALID(timeRange.start) ? CMTimeGetSeconds(timeRange.start) : 0;
+                double duration = CMTIME_IS_VALID(timeRange.duration) ? CMTimeGetSeconds(timeRange.duration) : 0;
+                bufferedPosition = start + duration;
+            }
+            
+            stats[@"bufferedPosition"] = @(bufferedPosition);
+            stats[@"currentPosition"] = @(currentTime);
+            stats[@"bufferedPercentage"] = @((int)bufferedPercentage);
+            stats[@"isBuffering"] = @(!self.player.currentItem.playbackLikelyToKeepUp);
+            stats[@"playWhenReady"] = @(self.player.rate > 0);
+        }
+        
         [self sendEventWithName:@"onStreamStats" body:@{@"stats": stats}];
-    } rejecter:^(NSString *code, NSString *message, NSError *error) {
+    } @catch (NSException *exception) {
         // Ignore errors for stats
-    }];
+    }
 }
 
 - (NSString *)cacheKeyForURL:(NSString *)url
