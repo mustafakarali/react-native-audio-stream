@@ -69,6 +69,15 @@ export interface AudioStreamConfig {
   
   // Headers for HTTP requests
   headers?: Record<string, string>;
+  
+  // iOS 26 Features
+  enableRecording?: boolean; // default: false
+  voiceProcessing?: boolean; // default: false
+  spokenAudio?: boolean; // default: false - for podcasts, audiobooks
+  longFormAudio?: boolean; // default: false - enables long form audio routing policy
+  enableAirPodsHighQuality?: boolean; // default: false - iOS 26 AirPods high quality recording
+  enableEnhancedBuffering?: boolean; // default: false - AirPlay 2 enhanced buffering
+  enableSpatialAudio?: boolean; // default: false - spatial audio support
 }
 
 export interface PlaybackStats {
@@ -125,6 +134,14 @@ export interface AudioStreamCallbacks {
   onMetadata?: (metadata: AudioMetadata) => void;
   onStats?: (stats: PlaybackStats) => void;
   onNetworkStateChange?: (isConnected: boolean) => void;
+}
+
+export interface AudioDeviceInfo {
+  portName: string;
+  portType: string;
+  uid: string;
+  hasHardwareVoiceCallProcessing: boolean;
+  channels: number;
 }
 
 // Main audio stream interface
@@ -195,6 +212,14 @@ export interface IAudioStream {
   requestAudioFocus(): Promise<boolean>;
   abandonAudioFocus(): Promise<void>;
   setAudioSessionCategory(category: string): Promise<void>; // iOS specific
+  
+  // iOS 26 Features
+  showInputPicker(): Promise<void>; // Show native input device picker (iOS 26+)
+  getAvailableInputs(): Promise<AudioDeviceInfo[]>; // Get list of available input devices
+  enableEnhancedBuffering(enable: boolean): Promise<void>; // Enable AirPlay 2 enhanced buffering
+  enableSpatialAudio(enable: boolean): Promise<void>; // Enable spatial audio support
+  useQueuePlayer(enable: boolean): Promise<void>; // Use AVQueuePlayer for enhanced features
+  createRoutePickerView(): Promise<number>; // Create and return route picker view tag
 }
 
 // Native module interface
@@ -227,6 +252,14 @@ export interface AudioStreamNativeModule {
   requestAudioFocus(): Promise<boolean>;
   abandonAudioFocus(): Promise<void>;
   setAudioSessionCategory(category: string): Promise<void>;
+  
+  // iOS 26 Features
+  showInputPicker(): Promise<void>;
+  getAvailableInputs(): Promise<AudioDeviceInfo[]>;
+  enableEnhancedBuffering(enable: boolean): Promise<void>;
+  enableSpatialAudio(enable: boolean): Promise<void>;
+  useQueuePlayer(enable: boolean): Promise<void>;
+  createRoutePickerView(): Promise<number>;
 }
 
 // Error codes

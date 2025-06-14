@@ -13,6 +13,7 @@ export interface Spec extends TurboModule {
   destroy(): Promise<boolean>;
   startStream(url: string, config: Object): Promise<boolean>;
   stopStream(): Promise<boolean>;
+  cancelStream(): Promise<boolean>;
   play(): Promise<boolean>;
   pause(): Promise<boolean>;
   stop(): Promise<boolean>;
@@ -36,6 +37,14 @@ export interface Spec extends TurboModule {
   requestAudioFocus(): Promise<boolean>;
   abandonAudioFocus(): Promise<boolean>;
   setAudioSessionCategory(category: string): Promise<boolean>;
+  
+  // iOS 26 Features
+  showInputPicker(): Promise<boolean>;
+  getAvailableInputs(): Promise<ReadonlyArray<Object>>;
+  enableEnhancedBuffering(enable: boolean): Promise<boolean>;
+  enableSpatialAudio(enable: boolean): Promise<boolean>;
+  useQueuePlayer(enable: boolean): Promise<boolean>;
+  createRoutePickerView(): Promise<number>;
   
   // Event emitter methods
   addListener(eventName: string): void;

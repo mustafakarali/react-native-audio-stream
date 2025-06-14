@@ -12,6 +12,7 @@ import {
   DEFAULT_CONFIG,
   EQUALIZER_PRESETS,
   ErrorCodes,
+  AudioDeviceInfo,
 } from './types';
 import { logger } from './logger';
 
@@ -501,11 +502,6 @@ export class AudioStream implements IAudioStream {
   }
 
   async setAudioSessionCategory(category: string): Promise<void> {
-    if (Platform.OS !== 'ios') {
-      logger.warn('setAudioSessionCategory is only available on iOS');
-      return;
-    }
-    
     this.ensureInitialized();
     
     try {
@@ -513,6 +509,87 @@ export class AudioStream implements IAudioStream {
       await RNAudioStream.setAudioSessionCategory(category);
     } catch (error) {
       logger.error('Failed to set audio session category:', error);
+      throw error;
+    }
+  }
+
+  // iOS 26 Features
+  async showInputPicker(): Promise<void> {
+    this.ensureInitialized();
+    
+    try {
+      logger.info('Showing input picker');
+      await RNAudioStream.showInputPicker();
+      logger.info('Input picker shown successfully');
+    } catch (error) {
+      logger.error('Failed to show input picker:', error);
+      throw this.createError(ErrorCodes.UNSUPPORTED_FORMAT, 'Failed to show input picker', error);
+    }
+  }
+
+  async getAvailableInputs(): Promise<AudioDeviceInfo[]> {
+    this.ensureInitialized();
+    
+    try {
+      logger.debug('Getting available inputs');
+      const inputs = await RNAudioStream.getAvailableInputs();
+      logger.debug(`Found ${inputs.length} available inputs`);
+      return inputs;
+    } catch (error) {
+      logger.error('Failed to get available inputs:', error);
+      throw error;
+    }
+  }
+
+  async enableEnhancedBuffering(enable: boolean): Promise<void> {
+    this.ensureInitialized();
+    
+    try {
+      logger.info(`${enable ? 'Enabling' : 'Disabling'} enhanced buffering`);
+      await RNAudioStream.enableEnhancedBuffering(enable);
+      logger.info(`Enhanced buffering ${enable ? 'enabled' : 'disabled'} successfully`);
+    } catch (error) {
+      logger.error('Failed to set enhanced buffering:', error);
+      throw error;
+    }
+  }
+
+  async enableSpatialAudio(enable: boolean): Promise<void> {
+    this.ensureInitialized();
+    
+    try {
+      logger.info(`${enable ? 'Enabling' : 'Disabling'} spatial audio`);
+      await RNAudioStream.enableSpatialAudio(enable);
+      logger.info(`Spatial audio ${enable ? 'enabled' : 'disabled'} successfully`);
+    } catch (error) {
+      logger.error('Failed to set spatial audio:', error);
+      throw error;
+    }
+  }
+
+  async useQueuePlayer(enable: boolean): Promise<void> {
+    this.ensureInitialized();
+    
+    try {
+      logger.info(`${enable ? 'Using' : 'Not using'} queue player`);
+      await RNAudioStream.useQueuePlayer(enable);
+      logger.info(`Queue player ${enable ? 'enabled' : 'disabled'} successfully`);
+    } catch (error) {
+      logger.error('Failed to set queue player:', error);
+      throw error;
+    }
+  }
+
+  async createRoutePickerView(): Promise<number> {
+    this.ensureInitialized();
+    
+    try {
+      logger.info('Creating route picker view');
+      const viewTag = await RNAudioStream.createRoutePickerView();
+      logger.info(`Route picker view created with tag: ${viewTag}`);
+      return viewTag;
+    } catch (error) {
+      logger.error('Failed to create route picker view:', error);
       throw error;
     }
   }

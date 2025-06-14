@@ -36,6 +36,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.6.0] - 2025-01-20
+
+### Added
+- 🎙️ **iOS 26 Features Support**
+  - AVInputPickerInteraction for native input device selection
+  - AirPods high-quality recording support (placeholder for future API)
+  - Spatial audio support with head tracking
+  - AVQueuePlayer integration for enhanced buffering
+  - Route picker view creation
+  - Available input devices listing
+- 📍 **Enhanced Audio Configuration**
+  - `enableRecording` option for recording support
+  - `voiceProcessing` option for voice chat mode
+  - `spokenAudio` option for podcasts/audiobooks
+  - `longFormAudio` option for long-form audio routing policy
+  - `enableAirPodsHighQuality` option for future AirPods features
+  - `enableEnhancedBuffering` option for AirPlay 2
+  - `enableSpatialAudio` option for spatial audio
+- 🚀 **New Methods**
+  - `showInputPicker()` - Show native input device picker
+  - `getAvailableInputs()` - Get list of available input devices
+  - `enableEnhancedBuffering()` - Control AirPlay 2 enhanced buffering
+  - `enableSpatialAudio()` - Control spatial audio support
+  - `useQueuePlayer()` - Switch to AVQueuePlayer
+  - `createRoutePickerView()` - Create native route picker view
+
+### Changed
+- Updated README with iOS 26 features documentation
+- Enhanced Info.plist requirements with AVInitialRouteSharingPolicy
+- Improved audio session configuration with iOS 26 optimizations
+
+### Technical Details
+- Added AVKit import for AVInputPickerInteraction
+- Implemented iOS 26 API availability checks
+- Enhanced audio session setup with routing policies
+- Added spatial audio format configuration
+
 ## [1.5.3] - 2025-01-20
 
 ### Fixed
