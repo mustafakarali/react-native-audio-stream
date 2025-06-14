@@ -6,13 +6,24 @@ buildscript {
 
     dependencies {
         classpath 'com.android.tools.build:gradle:7.2.1'
+        classpath 'com.facebook.react:react-native-gradle-plugin'
     }
 }
 
 apply plugin: 'com.android.library'
+apply plugin: 'com.facebook.react'
 
 def safeExtGet(prop, fallback) {
     rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+react {
+    // The name of the generated `ReactPackage`
+    reactNativeDir = rootProject.file("../node_modules/react-native")
+    codegenDir = rootProject.file("../node_modules/@react-native/codegen")
+    jsRootDir = rootProject.file("../src/")
+    libraryName = "RNAudioStreamSpec"
+    codegenJavaPackageName = "com.audiostream"
 }
 
 android {

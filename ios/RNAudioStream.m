@@ -359,10 +359,22 @@ RCT_EXPORT_METHOD(stopStream:(RCTPromiseResolveBlock)resolve
 {
     @try {
         [self cleanup];
-        [self updateState:PlaybackStateStopped];
+        [self updateState:PlaybackStateIdle];
         resolve(@(YES));
     } @catch (NSException *exception) {
         reject(@"STOP_ERROR", exception.reason, nil);
+    }
+}
+
+RCT_EXPORT_METHOD(cancelStream:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        [self cleanup];
+        [self updateState:PlaybackStateIdle];
+        resolve(@(YES));
+    } @catch (NSException *exception) {
+        reject(@"CANCEL_ERROR", exception.reason, nil);
     }
 }
 
@@ -577,6 +589,20 @@ RCT_EXPORT_METHOD(getStats:(RCTPromiseResolveBlock)resolve
                 bufferHealth = 50;
             }
             
+            // Calculate buffer percentage
+            double bufferedPercentage = 0;
+            double bufferedPosition = 0;
+            if (loadedTimeRanges.count > 0) {
+                CMTimeRange timeRange = [loadedTimeRanges.firstObject CMTimeRangeValue];
+                double start = CMTIME_IS_VALID(timeRange.start) ? CMTimeGetSeconds(timeRange.start) : 0;
+                double duration = CMTIME_IS_VALID(timeRange.duration) ? CMTimeGetSeconds(timeRange.duration) : 0;
+                bufferedPosition = start + duration;
+                
+                if (totalDuration > 0) {
+                    bufferedPercentage = (bufferedPosition / totalDuration) * 100;
+                }
+            }
+            
             stats[@"bufferedDuration"] = @(bufferedDuration);
             stats[@"playedDuration"] = @(currentTime);
             stats[@"totalDuration"] = @(totalDuration);
@@ -585,6 +611,13 @@ RCT_EXPORT_METHOD(getStats:(RCTPromiseResolveBlock)resolve
             stats[@"bufferHealth"] = @(bufferHealth);
             stats[@"droppedFrames"] = @(0); // Not applicable for audio
             stats[@"bitRate"] = @(128); // Would need to extract from stream
+            
+            // Additional buffer information
+            stats[@"bufferedPosition"] = @(bufferedPosition);
+            stats[@"currentPosition"] = @(currentTime);
+            stats[@"bufferedPercentage"] = @((int)bufferedPercentage);
+            stats[@"isBuffering"] = @(self.state == PlaybackStateBuffering);
+            stats[@"playWhenReady"] = @(self.player.rate > 0);
         }
         
         resolve(stats);
@@ -779,6 +812,17 @@ RCT_EXPORT_METHOD(setAudioSessionCategory:(NSString *)category
     } @catch (NSException *exception) {
         reject(@"AUDIO_SESSION_ERROR", exception.reason, nil);
     }
+}
+
+// These methods are required for NativeEventEmitter
+RCT_EXPORT_METHOD(addListener:(NSString *)eventName)
+{
+    // Required for NativeEventEmitter
+}
+
+RCT_EXPORT_METHOD(removeListeners:(double)count)
+{
+    // Required for NativeEventEmitter
 }
 
 #pragma mark - Helper Methods

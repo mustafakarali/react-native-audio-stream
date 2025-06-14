@@ -706,6 +706,28 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
         promise.resolve(true);
     }
 
+    @ReactMethod
+    public void cancelStream(Promise promise) {
+        try {
+            cleanup();
+            updateState(PlaybackState.IDLE);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to cancel stream", e);
+            promise.reject("CANCEL_ERROR", "Failed to cancel stream", e);
+        }
+    }
+
+    @ReactMethod
+    public void addListener(String eventName) {
+        // Keep: Required for NativeEventEmitter
+    }
+
+    @ReactMethod
+    public void removeListeners(double count) {
+        // Keep: Required for NativeEventEmitter
+    }
+
     // Helper methods
 
     private void cleanup() {

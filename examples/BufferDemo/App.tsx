@@ -40,6 +40,7 @@ const SAMPLE_STREAMS = [
   { name: 'Lofi Hip Hop', url: 'https://usa9.fastcast4u.com/proxy/jamz?mp=/1' },
   { name: 'SomaFM - Groove Salad', url: 'https://somafm.com/groovesalad256.pls' },
   { name: 'Test MP3 Stream', url: 'https://cdn.pixabay.com/download/audio/2021/11/25/audio_91b32e02f9.mp3' },
+  { name: 'Kafa Radyo', url: 'https://moondigitaledge2.radyotvonline.net/kafaradyo/playlist.m3u8' },
 ];
 
 // Time formatting helper
@@ -178,31 +179,25 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Update buffer percentage
+  // Re-initialize when background mode changes
   useEffect(() => {
-    let interval: NodeJS.Timeout | undefined;
-    
-    if (isInitialized && (playbackState === PlaybackState.PLAYING || playbackState === PlaybackState.BUFFERING)) {
-      interval = setInterval(async () => {
-        try {
-          // Only get buffer percentage if we're in a valid state
-          if (playbackState !== PlaybackState.IDLE && playbackState !== PlaybackState.STOPPED) {
-            const percentage = await AudioStream.getBufferedPercentage();
-            setBufferedPercentage(percentage || 0);
-          }
-        } catch (err) {
-          // Silently handle errors when player is not ready
-          console.log('Buffer percentage not available');
-        }
-      }, 500);
-    } else {
+    if (isInitialized) {
+      // Stop current stream
+      AudioStream.stopStream().then(() => {
+        // Re-initialize with new background mode setting
+        initializeAudioStream();
+      }).catch(console.error);
+    }
+  }, [enableBackgroundMode]);
+
+  // Update buffer percentage from stats
+  useEffect(() => {
+    // Buffer percentage is now updated through onStats event
+    // No need for separate polling
+    if (playbackState === PlaybackState.IDLE || playbackState === PlaybackState.STOPPED) {
       setBufferedPercentage(0);
     }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [playbackState, isInitialized]);
+  }, [playbackState]);
 
   const initializeAudioStream = async () => {
     try {
@@ -248,6 +243,11 @@ const App: React.FC = () => {
           setDetailedStats(stats);
           setNetworkSpeed(stats.networkSpeed || 0);
           setBufferHealth(stats.bufferHealth || 0);
+          
+          // Update buffer percentage from stats
+          if (stats.bufferedPercentage !== undefined) {
+            setBufferedPercentage(stats.bufferedPercentage);
+          }
           
           // Update animations
           Animated.timing(bufferHealthAnimation, {
@@ -346,17 +346,18 @@ const App: React.FC = () => {
     }
   };
 
-  // Stop and cleanup stream
-  const stopAndCleanup = async () => {
+  // Cancel stream
+  const cancelStream = async () => {
     try {
-      await AudioStream.stopStream();
+      await AudioStream.cancelStream();
       setBufferedPercentage(0);
       setCurrentTime(0);
       setDuration(0);
       setStats(null);
       setMetadata(null);
+      setDetailedStats(null);
     } catch (err) {
-      console.error('Stop stream error:', err);
+      console.error('Cancel stream error:', err);
     }
   };
 
@@ -686,7 +687,7 @@ const App: React.FC = () => {
 
               <TouchableOpacity
                 style={[styles.button, styles.dangerButton]}
-                onPress={stopAndCleanup}
+                onPress={cancelStream}
               >
                 <Text style={styles.buttonText}>❌ Cancel</Text>
               </TouchableOpacity>

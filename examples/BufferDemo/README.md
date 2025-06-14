@@ -101,4 +101,10 @@ The demo includes:
 - Clean Material Design UI
 - Real-time buffer visualization
 - Comprehensive stream statistics
-- Error handling with user-friendly messages 
+- Error handling with user-friendly messages
+
+## Support Development
+
+If you find this demo and the audio stream package helpful, consider supporting the development:
+
+☕ [Buy Me a Coffee](https://coff.ee/mustafakarali) 

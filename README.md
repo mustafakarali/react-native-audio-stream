@@ -1,5 +1,7 @@
 # React Native Audio Stream
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://coff.ee/mustafakarali)
+
 A comprehensive React Native audio streaming library with real-time playback support for iOS and Android. Built with TypeScript and featuring advanced capabilities like buffering management, network resilience, equalizer support, and background playback.
 
 > ⚠️ **Important**: This is a comprehensive implementation but has not been fully tested in production. Please see [TESTING.md](TESTING.md) for testing requirements and known limitations.
@@ -482,6 +484,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Support
 
+- ☕ [Buy Me a Coffee](https://coff.ee/mustafakarali) - Support the development
 - 📧 Email: mustafa@birharika.com
 - 🐛 Issues: [GitHub Issues](https://github.com/mustafakarali/react-native-audio-stream/issues)
 
