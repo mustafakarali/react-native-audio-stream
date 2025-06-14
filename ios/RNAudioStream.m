@@ -254,6 +254,71 @@ RCT_EXPORT_METHOD(startStream:(NSString *)url
 
 - (void)startStreamingFromURL:(NSURL *)url
 {
+    // Check if this is HLS/DASH stream
+    NSString *urlString = [url absoluteString];
+    BOOL isHLS = [urlString containsString:@".m3u8"] || [urlString containsString:@"playlist.m3u8"];
+    BOOL isDASH = [urlString containsString:@".mpd"];
+    
+    if (isHLS || isDASH) {
+        // Use AVPlayer directly for HLS/DASH
+        [self startHLSStreamFromURL:url];
+    } else {
+        // Use URLSession for progressive download
+        [self startProgressiveStreamFromURL:url];
+    }
+}
+
+- (void)startHLSStreamFromURL:(NSURL *)url
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Create AVAsset with headers if provided
+        NSMutableDictionary *options = [NSMutableDictionary dictionary];
+        NSDictionary *headers = self.config[@"headers"];
+        if (headers) {
+            options[@"AVURLAssetHTTPHeaderFieldsKey"] = headers;
+        }
+        
+        AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:options];
+        
+        // Create player item
+        self.playerItem = [AVPlayerItem playerItemWithAsset:asset];
+        
+        // Add observers
+        [self.playerItem addObserver:self
+                          forKeyPath:@"status"
+                             options:NSKeyValueObservingOptionNew
+                             context:nil];
+        
+        [self.playerItem addObserver:self
+                          forKeyPath:@"playbackBufferEmpty"
+                             options:NSKeyValueObservingOptionNew
+                             context:nil];
+        
+        [self.playerItem addObserver:self
+                          forKeyPath:@"playbackLikelyToKeepUp"
+                             options:NSKeyValueObservingOptionNew
+                             context:nil];
+        
+        self.hasObservers = YES;
+        
+        // Create player
+        if (!self.player) {
+            self.player = [AVPlayer playerWithPlayerItem:self.playerItem];
+        } else {
+            [self.player replaceCurrentItemWithPlayerItem:self.playerItem];
+        }
+        
+        // Configure player for HLS
+        self.player.automaticallyWaitsToMinimizeStalling = YES;
+        
+        [self sendEventWithName:@"onStreamStart" body:@{}];
+        [self startProgressTimer];
+        [self startStatsTimer];
+    });
+}
+
+- (void)startProgressiveStreamFromURL:(NSURL *)url
+{
     // Cancel any existing task
     [self.dataTask cancel];
     
@@ -822,6 +887,33 @@ RCT_EXPORT_METHOD(setAudioSessionCategory:(NSString *)category
     }
 }
 
+RCT_EXPORT_METHOD(cancelStream:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.player) {
+                [self.player pause];
+                [self.player replaceCurrentItemWithPlayerItem:nil];
+            }
+            [self.progressTimer invalidate];
+            self.progressTimer = nil;
+            
+            [self.statsTimer invalidate];
+            self.statsTimer = nil;
+            
+            [self.dataTask cancel];
+            self.dataTask = nil;
+            
+            self.currentUrl = nil;
+            [self updateState:PlaybackStateIdle];
+        });
+        resolve(@(YES));
+    } @catch (NSException *exception) {
+        reject(@"CANCEL_ERROR", @"Failed to cancel stream", nil);
+    }
+}
+
 // These methods are required for NativeEventEmitter
 RCT_EXPORT_METHOD(addListener:(NSString *)eventName)
 {
@@ -1047,14 +1139,171 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
 {
     [self updateState:PlaybackStateError];
     
-    NSDictionary *errorBody = @{
-        @"code": @"NETWORK_ERROR",
-        @"message": error.localizedDescription,
-        @"details": error.userInfo ?: @{},
-        @"recoverable": @(YES)
-    };
+    NSString *errorCode = @"NETWORK_ERROR";
+    NSString *errorMessage = error.localizedDescription ?: @"Unknown error";
+    BOOL recoverable = YES;
+    
+    // Determine error type based on error code
+    switch (error.code) {
+        case NSURLErrorNotConnectedToInternet:
+        case NSURLErrorNetworkConnectionLost:
+            errorCode = @"NETWORK_ERROR";
+            errorMessage = @"Network connection failed";
+            break;
+        case NSURLErrorUnsupportedURL:
+        case NSURLErrorBadURL:
+            errorCode = @"INVALID_URL";
+            errorMessage = @"Invalid stream URL";
+            recoverable = NO;
+            break;
+        case NSURLErrorTimedOut:
+            errorCode = @"TIMEOUT_ERROR";
+            errorMessage = @"Connection timed out";
+            break;
+        case NSURLErrorBadServerResponse:
+            errorCode = @"HTTP_ERROR";
+            errorMessage = @"Invalid server response";
+            break;
+        default:
+            if ([error.domain isEqualToString:AVFoundationErrorDomain]) {
+                errorCode = @"DECODER_ERROR";
+                errorMessage = @"Audio format not supported";
+                recoverable = NO;
+            }
+            break;
+    }
+    
+    NSMutableDictionary *errorBody = [@{
+        @"code": errorCode,
+        @"message": errorMessage,
+        @"recoverable": @(recoverable)
+    } mutableCopy];
+    
+    if (error.userInfo) {
+        errorBody[@"details"] = error.userInfo;
+    }
+    
+    NSLog(@"[RNAudioStream] Stream error: %@ (code: %ld)", errorMessage, (long)error.code);
     
     [self sendEventWithName:@"onStreamError" body:errorBody];
+}
+
+- (void)handlePlayerError:(NSError *)error
+{
+    [self updateState:PlaybackStateError];
+    
+    NSString *errorCode = @"PLAYER_ERROR";
+    NSString *errorMessage = error.localizedDescription ?: @"Player error";
+    BOOL recoverable = YES;
+    
+    if ([error.domain isEqualToString:AVFoundationErrorDomain]) {
+        switch (error.code) {
+            case AVErrorUnknown:
+                errorCode = @"UNKNOWN_ERROR";
+                errorMessage = @"Unknown player error";
+                break;
+            case AVErrorDecodeFailed:
+            case AVErrorFormatNotSupported:
+                errorCode = @"DECODE_ERROR";
+                errorMessage = @"Audio format not supported";
+                recoverable = NO;
+                break;
+            case AVErrorFileFormatNotRecognized:
+                errorCode = @"FORMAT_ERROR";
+                errorMessage = @"File format not recognized";
+                recoverable = NO;
+                break;
+            default:
+                break;
+        }
+    }
+    
+    NSMutableDictionary *errorBody = [@{
+        @"code": errorCode,
+        @"message": errorMessage,
+        @"recoverable": @(recoverable)
+    } mutableCopy];
+    
+    if (error.userInfo) {
+        errorBody[@"details"] = error.userInfo;
+    }
+    
+    NSLog(@"[RNAudioStream] Player error: %@ (code: %ld)", errorMessage, (long)error.code);
+    
+    [self sendEventWithName:@"onStreamError" body:errorBody];
+}
+
+#pragma mark - KVO
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
+{
+    if ([keyPath isEqualToString:@"status"]) {
+        AVPlayerItemStatus status = [[change objectForKey:NSKeyValueChangeNewKey] integerValue];
+        switch (status) {
+            case AVPlayerItemStatusReadyToPlay:
+                if (self.state == PlaybackStateLoading || self.state == PlaybackStateBuffering) {
+                    [self sendEventWithName:@"onStreamStart" body:@{}];
+                    [self extractAndSendMetadata];
+                    if ([self.config[@"autoPlay"] boolValue]) {
+                        [self.player play];
+                        [self updateState:PlaybackStatePlaying];
+                    }
+                }
+                break;
+            case AVPlayerItemStatusFailed:
+                [self handlePlayerError:self.playerItem.error];
+                break;
+            default:
+                break;
+        }
+    } else if ([keyPath isEqualToString:@"playbackBufferEmpty"]) {
+        if (self.playerItem.playbackBufferEmpty) {
+            [self updateState:PlaybackStateBuffering];
+            [self sendEventWithName:@"onStreamBuffer" body:@{@"isBuffering": @(YES)}];
+        }
+    } else if ([keyPath isEqualToString:@"playbackLikelyToKeepUp"]) {
+        if (self.playerItem.playbackLikelyToKeepUp && self.state == PlaybackStateBuffering) {
+            [self sendEventWithName:@"onStreamBuffer" body:@{@"isBuffering": @(NO)}];
+            if (self.player.rate > 0) {
+                [self updateState:PlaybackStatePlaying];
+            }
+        }
+    }
+}
+
+- (void)extractAndSendMetadata
+{
+    NSMutableDictionary *metadata = [NSMutableDictionary dictionary];
+    
+    if (self.player && self.player.currentItem) {
+        AVAsset *asset = self.player.currentItem.asset;
+        NSArray *metadataItems = [asset commonMetadata];
+        
+        for (AVMetadataItem *item in metadataItems) {
+            NSString *key = [item commonKey];
+            id value = [item value];
+            
+            if ([key isEqualToString:AVMetadataCommonKeyTitle] && value) {
+                metadata[@"title"] = value;
+            } else if ([key isEqualToString:AVMetadataCommonKeyArtist] && value) {
+                metadata[@"artist"] = value;
+            } else if ([key isEqualToString:AVMetadataCommonKeyAlbumName] && value) {
+                metadata[@"album"] = value;
+            }
+        }
+        
+        CMTime durationValue = asset.duration;
+        if (CMTIME_IS_VALID(durationValue) && !CMTIME_IS_INDEFINITE(durationValue)) {
+            double duration = CMTimeGetSeconds(durationValue);
+            if (duration > 0) {
+                metadata[@"duration"] = @(duration);
+            }
+        }
+    }
+    
+    if (metadata.count > 0) {
+        [self sendEventWithName:@"onStreamMetadata" body:@{@"metadata": metadata}];
+    }
 }
 
 #pragma mark - KVO

@@ -221,6 +221,11 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         extractAndSendMetadata();
                     }
                 }
+                
+                @Override
+                public void onMediaMetadataChanged(com.google.android.exoplayer2.MediaMetadata metadata) {
+                    extractAndSendMetadata();
+                }
             });
         });
     }
@@ -757,7 +762,21 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void cancelStream(Promise promise) {
         try {
-            cleanup();
+            mainHandler.post(() -> {
+                if (player != null) {
+                    player.stop();
+                    player.clearMediaItems();
+                }
+                if (progressTimer != null) {
+                    progressTimer.cancel();
+                    progressTimer = null;
+                }
+                if (statsTimer != null) {
+                    statsTimer.cancel();
+                    statsTimer = null;
+                }
+            });
+            currentUrl = null;
             updateState(PlaybackState.IDLE);
             promise.resolve(true);
         } catch (Exception e) {
@@ -839,13 +858,41 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
         updateState(PlaybackState.ERROR);
         
         WritableMap errorParams = Arguments.createMap();
-        errorParams.putString("code", "PLAYER_ERROR");
-        errorParams.putString("message", error.getMessage());
-        errorParams.putBoolean("recoverable", true);
+        String errorCode = "PLAYER_ERROR";
+        String errorMessage = error.getMessage() != null ? error.getMessage() : "Unknown error";
+        
+        // Determine error type
+        if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) {
+            errorCode = "NETWORK_ERROR";
+            errorMessage = "Network connection failed";
+        } else if (error.errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ||
+                   error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
+            errorCode = "HTTP_ERROR";
+            errorMessage = "Invalid HTTP response";
+        } else if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+                   error.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED) {
+            errorCode = "PARSE_ERROR";
+            errorMessage = "Invalid stream format";
+        } else if (error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                   error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED) {
+            errorCode = "DECODER_ERROR";
+            errorMessage = "Audio decoder error";
+        }
+        
+        errorParams.putString("code", errorCode);
+        errorParams.putString("message", errorMessage);
+        errorParams.putBoolean("recoverable", error.errorCode != PlaybackException.ERROR_CODE_DECODER_INIT_FAILED);
         
         WritableMap details = Arguments.createMap();
         details.putInt("errorCode", error.errorCode);
+        details.putString("errorName", error.getErrorCodeName());
+        if (error.getCause() != null) {
+            details.putString("cause", error.getCause().toString());
+        }
         errorParams.putMap("details", details);
+        
+        Log.e(TAG, "Playback error: " + errorMessage + " (code: " + error.errorCode + ")", error);
         
         sendEvent("onStreamError", errorParams);
     }

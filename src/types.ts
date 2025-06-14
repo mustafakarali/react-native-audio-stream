@@ -3,6 +3,10 @@ export enum AudioFormat {
   AAC = 'aac',
   WAV = 'wav',
   OGG = 'ogg',
+  FLAC = 'flac',
+  PCM = 'pcm',
+  HLS = 'hls',
+  DASH = 'dash',
 }
 
 export enum StreamingProtocol {

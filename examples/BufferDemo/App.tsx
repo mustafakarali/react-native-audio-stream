@@ -202,11 +202,14 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Re-initialize when background mode changes
+  // Handle background mode change
   useEffect(() => {
-    // Don't re-initialize, just update the state
-    // Background mode changes should not affect current playback
-  }, [enableBackgroundMode]);
+    // Background mode is set during initialization
+    // No need to reinitialize on toggle
+    if (playbackState === PlaybackState.PLAYING && !enableBackgroundMode) {
+      console.warn('Background mode disabled - playback may stop when app goes to background');
+    }
+  }, [enableBackgroundMode, playbackState]);
 
   // Update buffer percentage from stats
   useEffect(() => {
@@ -288,9 +291,19 @@ const App: React.FC = () => {
 
       AudioStream.addEventListener('onError', (error: any) => {
         console.error('Stream error:', error);
-        setError(error.message);
+        console.error('Error details:', JSON.stringify(error.details || {}, null, 2));
+        setError(`${error.code}: ${error.message}`);
         setIsLoading(false);
-        Alert.alert('Stream Error', error.message);
+        
+        // More detailed error alert
+        Alert.alert(
+          'Stream Error', 
+          `${error.message}\n\nCode: ${error.code}\nRecoverable: ${error.recoverable ? 'Yes' : 'No'}`,
+          error.recoverable ? [
+            {text: 'Retry', onPress: () => startStream()},
+            {text: 'Cancel', style: 'cancel'}
+          ] : [{text: 'OK'}]
+        );
       });
 
       AudioStream.addEventListener('onEnd', () => {
@@ -546,19 +559,32 @@ const App: React.FC = () => {
             )}
 
             {/* Metadata */}
-            {metadata && (
+            {(metadata && Object.keys(metadata).length > 0) ? (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Now Playing</Text>
+                <Text style={styles.sectionTitle}>🎵 Now Playing</Text>
                 <Text style={styles.metadataText}>
-                  🎤 Artist: {metadata.artist || 'Unknown'}
+                  🎤 Artist: {metadata.artist || 'Unknown Artist'}
                 </Text>
                 <Text style={styles.metadataText}>
-                  🎵 Title: {metadata.title || 'Unknown'}
+                  🎵 Title: {metadata.title || 'Unknown Title'}
                 </Text>
                 <Text style={styles.metadataText}>
-                  💿 Album: {metadata.album || 'Unknown'}
+                  💿 Album: {metadata.album || 'Unknown Album'}
                 </Text>
+                {metadata.duration && (
+                  <Text style={styles.metadataText}>
+                    ⏱️ Duration: {formatTime(metadata.duration)}
+                  </Text>
+                )}
               </View>
+            ) : (
+              playbackState === PlaybackState.PLAYING && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>🎵 Now Playing</Text>
+                  <Text style={styles.metadataText}>No metadata available</Text>
+                  <Text style={styles.metadataText}>Stream: {getStreamType(streamUrl)}</Text>
+                </View>
+              )
             )}
 
             {/* Background Mode Toggle */}
@@ -861,6 +887,8 @@ const App: React.FC = () => {
                   <Text style={styles.streamInfoText}>Latency: {stats.latency || 0} ms</Text>
                   <Text style={styles.streamInfoText}>Played: {formatTime(stats.playedDuration || 0)}</Text>
                   <Text style={styles.streamInfoText}>Buffered: {formatTime(stats.bufferedDuration || 0)}</Text>
+                  <Text style={styles.streamInfoText}>Network Speed: {Math.round(stats.networkSpeed || 0)} KB/s</Text>
+                  <Text style={styles.streamInfoText}>Buffer Health: {Math.round(stats.bufferHealth || 0)}%</Text>
                 </View>
               )}
             </View>
