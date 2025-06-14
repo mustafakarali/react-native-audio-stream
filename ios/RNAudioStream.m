@@ -186,41 +186,55 @@ RCT_EXPORT_METHOD(initialize:(NSDictionary *)config
         self.config = config ?: @{};
         
         // Configure audio session
-        self.audioSession = [AVAudioSession sharedInstance];
+        AVAudioSession *audioSession = [AVAudioSession sharedInstance];
         NSError *error = nil;
         
-        NSString *category = AVAudioSessionCategoryPlayback;
-        AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
+        // Set category first without options
+        BOOL success = [audioSession setCategory:AVAudioSessionCategoryPlayback 
+                                           error:&error];
         
-        if ([self.config[@"enableBackgroundMode"] boolValue]) {
-            options |= AVAudioSessionCategoryOptionAllowAirPlay;
-            options |= AVAudioSessionCategoryOptionAllowBluetooth;
-            options |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
-        }
-        
-        [self.audioSession setCategory:category
-                           withOptions:options
-                                 error:&error];
-        
-        if (error) {
-            NSLog(@"[RNAudioStream] Audio session category error: %@", error);
+        if (!success || error) {
+            NSLog(@"[RNAudioStream] Failed to set audio category: %@", error);
             reject(@"INITIALIZATION_ERROR", 
-                   [NSString stringWithFormat:@"Failed to configure audio session: %@", error.localizedDescription], 
+                   [NSString stringWithFormat:@"Failed to set audio category: %@", error.localizedDescription], 
                    error);
             return;
         }
         
-        [self.audioSession setActive:YES error:&error];
+        // Now set category with options if background mode is enabled
+        if ([self.config[@"enableBackgroundMode"] boolValue]) {
+            AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
+            
+            // Add options one by one to avoid conflicts
+            if (@available(iOS 9.0, *)) {
+                options |= AVAudioSessionCategoryOptionAllowBluetooth;
+            }
+            
+            success = [audioSession setCategory:AVAudioSessionCategoryPlayback
+                                   withOptions:options
+                                         error:&error];
+            
+            if (!success || error) {
+                NSLog(@"[RNAudioStream] Failed to set audio category with options: %@", error);
+                // Try without options as fallback
+                [audioSession setCategory:AVAudioSessionCategoryPlayback error:nil];
+            }
+        }
         
-        if (error) {
-            NSLog(@"[RNAudioStream] Audio session activation error: %@", error);
+        // Activate audio session
+        success = [audioSession setActive:YES error:&error];
+        
+        if (!success || error) {
+            NSLog(@"[RNAudioStream] Failed to activate audio session: %@", error);
             reject(@"INITIALIZATION_ERROR", 
                    [NSString stringWithFormat:@"Failed to activate audio session: %@", error.localizedDescription], 
                    error);
             return;
         }
         
+        self.audioSession = audioSession;
         self.isInitialized = YES;
+        NSLog(@"[RNAudioStream] Audio session initialized successfully");
         resolve(@(YES));
     } @catch (NSException *exception) {
         NSLog(@"[RNAudioStream] Initialize exception: %@", exception);
@@ -642,26 +656,43 @@ RCT_EXPORT_METHOD(removeListeners:(double)count)
 
 - (void)setupAudioSessionWithError:(NSError **)error
 {
-    self.audioSession = [AVAudioSession sharedInstance];
+    AVAudioSession *audioSession = [AVAudioSession sharedInstance];
     
-    NSString *category = AVAudioSessionCategoryPlayback;
-    AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
+    // First try to set category without options
+    BOOL success = [audioSession setCategory:AVAudioSessionCategoryPlayback error:error];
     
-    if ([self.config[@"enableBackgroundMode"] boolValue]) {
-        options |= AVAudioSessionCategoryOptionAllowAirPlay;
-        options |= AVAudioSessionCategoryOptionAllowBluetooth;
-        options |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
-    }
-    
-    [self.audioSession setCategory:category withOptions:options error:error];
-    if (*error) {
-        NSLog(@"[RNAudioStream] setupAudioSession category error: %@", *error);
+    if (!success || (error && *error)) {
+        NSLog(@"[RNAudioStream] setupAudioSession: Failed to set category: %@", *error);
         return;
     }
     
-    [self.audioSession setActive:YES error:error];
-    if (*error) {
-        NSLog(@"[RNAudioStream] setupAudioSession activation error: %@", *error);
+    // If background mode is enabled, try with options
+    if ([self.config[@"enableBackgroundMode"] boolValue]) {
+        AVAudioSessionCategoryOptions options = AVAudioSessionCategoryOptionMixWithOthers;
+        
+        if (@available(iOS 9.0, *)) {
+            options |= AVAudioSessionCategoryOptionAllowBluetooth;
+        }
+        
+        success = [audioSession setCategory:AVAudioSessionCategoryPlayback 
+                               withOptions:options 
+                                     error:error];
+        
+        if (!success || (error && *error)) {
+            NSLog(@"[RNAudioStream] setupAudioSession: Failed with options, falling back: %@", *error);
+            // Fallback to no options
+            [audioSession setCategory:AVAudioSessionCategoryPlayback error:nil];
+            if (error) *error = nil; // Clear error for fallback
+        }
+    }
+    
+    // Activate session
+    success = [audioSession setActive:YES error:error];
+    if (!success || (error && *error)) {
+        NSLog(@"[RNAudioStream] setupAudioSession: Failed to activate: %@", *error);
+    } else {
+        self.audioSession = audioSession;
+        NSLog(@"[RNAudioStream] setupAudioSession: Success");
     }
 }
 

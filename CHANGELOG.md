@@ -36,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.5.2] - 2024-01-14
+
+### Fixed
+- 🐛 **iOS OSStatus -50 Error**: Fixed paramErr in AVAudioSession configuration
+- 🔧 **Safer Audio Session Setup**: Progressive setup with fallback options
+- 📱 **iOS Compatibility**: Removed problematic audio session options
+- ✅ **Robust Error Handling**: Better fallback when options fail
+- 📝 **Enhanced Logging**: Added success logs for debugging
+
+### Changed
+- 🎯 **Audio Session Strategy**: Set category first, then try with options
+- 🔄 **Fallback Mechanism**: Automatically fallback to basic setup if options fail
+- 🚫 **Removed Options**: Removed AirPlay and BluetoothA2DP options that cause conflicts
+
 ## [1.5.1] - 2024-01-14
 
 ### Fixed
