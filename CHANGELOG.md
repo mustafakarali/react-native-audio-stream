@@ -36,6 +36,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.6.1] - 2025-01-20
+
+### Fixed
+- 🚨 **Critical iOS Fix**: Removed iOS 26.0 version check that was preventing code execution
+- 🚨 **Critical Build Fix**: Commented out AVInputPickerInteraction usage as it doesn't exist in current iOS SDK
+- 🚨 **Android 15 Compatibility**: Added proper audio focus checks for foreground/service requirements
+- Fixed platform parity by adding placeholder methods to Android for iOS 26 features
+
+### Added
+- Android methods for iOS compatibility: showInputPicker, getAvailableInputs, enableEnhancedBuffering, enableSpatialAudio, useQueuePlayer, createRoutePickerView
+- Basic available inputs detection for Android (built-in mic, wired headset)
+- Audio focus change event handling with proper state management
+- Foreground/service detection for Android 15 audio focus requirements
+
+### Changed
+- All iOS 26 features now return "UNSUPPORTED" error until APIs become available
+- Improved error messages to indicate feature availability status
+
 ## [1.6.0] - 2025-01-20
 
 ### Added

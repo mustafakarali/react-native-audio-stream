@@ -769,7 +769,12 @@ RCT_EXPORT_METHOD(showInputPicker:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     @try {
-        if (@available(iOS 26.0, *)) {
+        // TODO: AVInputPickerInteraction is not available in current iOS SDK
+        // This is a placeholder for future iOS versions
+        reject(@"UNSUPPORTED", @"Input picker is not yet available in current iOS version", nil);
+        
+        /* Future implementation when API becomes available:
+        if (@available(iOS 15.0, *)) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 // Create input picker interaction
                 if (!self.inputPicker) {
@@ -790,8 +795,9 @@ RCT_EXPORT_METHOD(showInputPicker:(RCTPromiseResolveBlock)resolve
                 }
             });
         } else {
-            reject(@"UNSUPPORTED", @"Input picker requires iOS 26.0 or later", nil);
+            reject(@"UNSUPPORTED", @"Input picker requires iOS 15.0 or later", nil);
         }
+        */
     } @catch (NSException *exception) {
         reject(@"PICKER_ERROR", exception.reason, nil);
     }

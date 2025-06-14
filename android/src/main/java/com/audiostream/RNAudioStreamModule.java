@@ -704,35 +704,95 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void requestAudioFocus(Promise promise) {
         try {
-            int result;
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                android.media.AudioAttributes playbackAttributes = new android.media.AudioAttributes.Builder()
-                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+            // Android 15 (API 35) audio focus restrictions
+            if (Build.VERSION.SDK_INT >= 35) {
+                // Check if app is in foreground or has active foreground service
+                if (!isAppInForeground() && !hasActiveForegroundService()) {
+                    promise.reject("AUDIO_FOCUS_ERROR", 
+                        "Apps targeting Android 15 must be in foreground or have audio foreground service to request audio focus", 
+                        null);
+                    return;
+                }
+            }
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                AudioAttributes attributes = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build();
+                
                 audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                        .setAudioAttributes(playbackAttributes)
+                        .setAudioAttributes(attributes)
                         .setAcceptsDelayedFocusGain(true)
                         .setOnAudioFocusChangeListener(new AudioManager.OnAudioFocusChangeListener() {
                             @Override
                             public void onAudioFocusChange(int focusChange) {
-                                // Handle focus changes
+                                handleAudioFocusChange(focusChange);
                             }
                         })
                         .build();
-                result = audioManager.requestAudioFocus(audioFocusRequest);
+                
+                int result = audioManager.requestAudioFocus(audioFocusRequest);
+                promise.resolve(result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
             } else {
-                result = audioManager.requestAudioFocus(
-                    null,
+                int result = audioManager.requestAudioFocus(
+                    focusChange -> handleAudioFocusChange(focusChange),
                     AudioManager.STREAM_MUSIC,
                     AudioManager.AUDIOFOCUS_GAIN
                 );
+                promise.resolve(result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
             }
-            promise.resolve(result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
         } catch (Exception e) {
             Log.e(TAG, "Failed to request audio focus", e);
             promise.reject("AUDIO_FOCUS_ERROR", "Failed to request audio focus", e);
         }
+    }
+
+    private boolean isAppInForeground() {
+        // Check if app is in foreground
+        // This is a simplified check - production apps should use ProcessLifecycleOwner
+        android.app.ActivityManager.RunningAppProcessInfo appProcessInfo = new android.app.ActivityManager.RunningAppProcessInfo();
+        android.app.ActivityManager.getMyMemoryState(appProcessInfo);
+        return (appProcessInfo.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND);
+    }
+
+    private boolean hasActiveForegroundService() {
+        // Check if app has an active foreground service
+        // This would need to be implemented based on your app's service architecture
+        return false; // Placeholder - implement based on your app
+    }
+
+    private void handleAudioFocusChange(int focusChange) {
+        WritableMap params = Arguments.createMap();
+        
+        switch (focusChange) {
+            case AudioManager.AUDIOFOCUS_GAIN:
+                params.putString("focusChange", "gain");
+                if (player != null && currentState == PlaybackState.PAUSED) {
+                    player.play();
+                }
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS:
+                params.putString("focusChange", "loss");
+                if (player != null) {
+                    player.pause();
+                }
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                params.putString("focusChange", "loss_transient");
+                if (player != null) {
+                    player.pause();
+                }
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+                params.putString("focusChange", "loss_transient_can_duck");
+                if (player != null) {
+                    player.setVolume(0.3f);
+                }
+                break;
+        }
+        
+        sendEvent("onAudioFocusChange", params);
     }
 
     @ReactMethod
@@ -776,7 +836,6 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     statsTimer = null;
                 }
             });
-            currentUrl = null;
             updateState(PlaybackState.IDLE);
             promise.resolve(true);
         } catch (Exception e) {
@@ -793,6 +852,80 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void removeListeners(double count) {
         // Keep: Required for NativeEventEmitter
+    }
+
+    // iOS 26 Feature Placeholders for Android
+    @ReactMethod
+    public void showInputPicker(Promise promise) {
+        // TODO: Implement when Android provides similar API
+        promise.reject("UNSUPPORTED", "Input picker is not available on Android", null);
+    }
+
+    @ReactMethod
+    public void getAvailableInputs(Promise promise) {
+        try {
+            // Android doesn't have direct API like iOS, but we can provide basic info
+            WritableArray inputs = Arguments.createArray();
+            
+            // Check for built-in mic
+            WritableMap builtInMic = Arguments.createMap();
+            builtInMic.putString("portName", "Built-in Microphone");
+            builtInMic.putString("portType", "builtin");
+            builtInMic.putString("uid", "builtin-mic");
+            builtInMic.putBoolean("hasHardwareVoiceCallProcessing", true);
+            builtInMic.putInt("channels", 1);
+            inputs.pushMap(builtInMic);
+            
+            // Check for wired headset
+            if (audioManager.isWiredHeadsetOn()) {
+                WritableMap wiredHeadset = Arguments.createMap();
+                wiredHeadset.putString("portName", "Wired Headset");
+                wiredHeadset.putString("portType", "wired");
+                wiredHeadset.putString("uid", "wired-headset");
+                wiredHeadset.putBoolean("hasHardwareVoiceCallProcessing", false);
+                wiredHeadset.putInt("channels", 1);
+                inputs.pushMap(wiredHeadset);
+            }
+            
+            promise.resolve(inputs);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get available inputs", e);
+            promise.reject("INPUT_ERROR", "Failed to get available inputs", e);
+        }
+    }
+
+    @ReactMethod
+    public void enableEnhancedBuffering(boolean enable, Promise promise) {
+        try {
+            // ExoPlayer already has advanced buffering, this is a no-op for compatibility
+            Log.i(TAG, "Enhanced buffering is already enabled in ExoPlayer");
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("BUFFER_ERROR", "Failed to enable enhanced buffering", e);
+        }
+    }
+
+    @ReactMethod
+    public void enableSpatialAudio(boolean enable, Promise promise) {
+        // TODO: Implement when Android provides Spatial Audio API
+        promise.reject("UNSUPPORTED", "Spatial audio is not available on Android", null);
+    }
+
+    @ReactMethod
+    public void useQueuePlayer(boolean useQueue, Promise promise) {
+        try {
+            // ExoPlayer already handles playlists, this is for iOS compatibility
+            Log.i(TAG, "Queue player functionality is built into ExoPlayer");
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("QUEUE_ERROR", "Failed to use queue player", e);
+        }
+    }
+
+    @ReactMethod
+    public void createRoutePickerView(Promise promise) {
+        // TODO: Implement audio route picker for Android
+        promise.reject("UNSUPPORTED", "Route picker view is not available on Android", null);
     }
 
     // Helper methods
