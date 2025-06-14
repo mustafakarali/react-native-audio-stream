@@ -36,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.4.3] - 2024-01-14
+
+### Documentation
+- 📚 **README Overhaul**: Fixed all inconsistencies and missing information
+- 📋 Updated version compatibility table to reflect current versions
+- 🎵 Added PCM and FLAC to supported formats list
+- 🌐 Added onNetworkStateChange event documentation
+- 📊 Updated PlaybackStats interface with all new fields
+- ❗ Added comprehensive error codes table
+- 🎛️ Documented equalizer presets with indices
+- 🎬 Added dedicated HLS/DASH streaming section
+- 💡 Clarified that initialize() is optional
+- 🔄 Enhanced examples with metadata and cancelStream usage
+
 ## [1.4.2] - 2024-01-14
 
 ### Added

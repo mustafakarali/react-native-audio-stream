@@ -18,19 +18,19 @@ A comprehensive React Native audio streaming library with real-time playback sup
 - 🔄 **Network Resilience** - Automatic reconnection and retry logic
 - 🎯 **Background Playback** - Continue playing when app is in background
 - 📡 **Multiple Protocols** - Support for HTTP, HTTPS, HLS, DASH, and WebSocket streaming
-- 🎨 **Multiple Formats** - MP3, AAC, WAV, OGG, FLAC support
-- 🎬 **HLS/DASH Support** - Adaptive bitrate streaming support
+- 🎨 **Multiple Formats** - MP3, AAC, WAV, OGG, FLAC, PCM support
+- 🎬 **HLS/DASH Support** - Native adaptive bitrate streaming support
 - ❌ **Cancel Stream** - Properly cancel ongoing streams
 
 ## Compatibility
 
 | React Native Version | Package Version | Status |
 |---------------------|----------------|---------|
-| 0.80.x              | 1.0.0          | ✅ Supported (needs testing) |
-| 0.79.x              | 1.0.0          | ✅ Supported (needs testing) |
-| 0.78.x              | 1.0.0          | ✅ Supported (needs testing) |
-| 0.77.x              | 1.0.0          | ✅ Supported (needs testing) |
-| 0.76.x              | 1.0.0          | ✅ Supported (needs testing) |
+| 0.80.x              | 1.4.x          | ✅ Supported |
+| 0.79.x              | 1.4.x          | ✅ Supported |
+| 0.78.x              | 1.4.x          | ✅ Supported |
+| 0.77.x              | 1.4.x          | ✅ Supported |
+| 0.76.x              | 1.4.x          | ✅ Supported |
 | < 0.76              | -              | ❌ Not supported |
 
 ## Installation
@@ -67,7 +67,8 @@ The library automatically handles Android configuration. However, ensure your `m
 ```typescript
 import AudioStream from '@mustafakarali/react-native-audio-stream';
 
-// Initialize the audio stream
+// Initialize the audio stream (optional but recommended)
+// If not called, default configuration will be used
 await AudioStream.initialize({
   enableBackgroundMode: true,
   autoPlay: true,
@@ -75,6 +76,9 @@ await AudioStream.initialize({
 
 // Start streaming
 await AudioStream.startStream('https://your-audio-stream-url.mp3');
+
+// Or start HLS/DASH streaming (automatically detected)
+await AudioStream.startStream('https://example.com/playlist.m3u8');
 
 // Add event listeners
 AudioStream.addEventListener('onProgress', (progress) => {
@@ -84,6 +88,9 @@ AudioStream.addEventListener('onProgress', (progress) => {
 AudioStream.addEventListener('onError', (error) => {
   console.error('Stream error:', error);
 });
+
+// Cancel stream if needed
+await AudioStream.cancelStream();
 ```
 
 ## API Reference
@@ -191,16 +198,29 @@ Set custom equalizer bands.
 Apply a preset equalizer configuration.
 
 ```typescript
-// Apply bass boost preset
-await AudioStream.applyEqualizerPreset(EQUALIZER_PRESETS[1]);
+// Available presets
+const presets = [
+  { name: 'Flat', bands: [/* ... */] },      // Index 0
+  { name: 'Bass Boost', bands: [/* ... */] }, // Index 1
+  { name: 'Treble Boost', bands: [/* ... */] }, // Index 2
+  { name: 'Vocal', bands: [/* ... */] },     // Index 3
+  { name: 'Rock', bands: [/* ... */] },      // Index 4
+  { name: 'Pop', bands: [/* ... */] },       // Index 5
+  { name: 'Jazz', bands: [/* ... */] },      // Index 6
+  { name: 'Dance', bands: [/* ... */] },     // Index 7
+  { name: 'Classical', bands: [/* ... */] },  // Index 8
+];
 
-// Custom equalizer
+// Apply bass boost preset
+await AudioStream.applyEqualizerPreset(1);
+
+// Custom equalizer (5 bands: 60Hz, 230Hz, 910Hz, 3600Hz, 14000Hz)
 await AudioStream.setEqualizer([
-  { frequency: 60, gain: 6 },
-  { frequency: 230, gain: 4 },
-  { frequency: 910, gain: 0 },
-  { frequency: 3600, gain: 2 },
-  { frequency: 14000, gain: 4 },
+  { frequency: 60, gain: 6 },    // Bass
+  { frequency: 230, gain: 4 },   // Low-mid
+  { frequency: 910, gain: 0 },   // Mid
+  { frequency: 3600, gain: 2 },  // High-mid
+  { frequency: 14000, gain: 4 }, // Treble
 ]);
 ```
 
@@ -215,18 +235,40 @@ Available events:
 - `onError` - Error occurred
 - `onEnd` - Stream ended
 - `onStateChange` - Playback state changed
-- `onMetadata` - Metadata received
+- `onMetadata` - Metadata received (title, artist, album)
 - `onStats` - Statistics update
+- `onNetworkStateChange` - Network connectivity changed
 
 ```typescript
+// Progress tracking
 AudioStream.addEventListener('onProgress', (progress) => {
   console.log(`${progress.currentTime}s / ${progress.duration}s`);
+  console.log(`Buffered: ${progress.percentage}%`);
 });
 
+// Error handling with recovery
 AudioStream.addEventListener('onError', (error) => {
+  console.error(`Error Code: ${error.code}`);
+  console.error(`Error Message: ${error.message}`);
+  
   if (error.recoverable) {
-    // Retry logic
+    // Implement retry logic
+    setTimeout(() => {
+      AudioStream.startStream(currentUrl);
+    }, 3000);
   }
+});
+
+// Metadata display
+AudioStream.addEventListener('onMetadata', (metadata) => {
+  console.log(`Now playing: ${metadata.title} by ${metadata.artist}`);
+  console.log(`Album: ${metadata.album}`);
+});
+
+// Network monitoring
+AudioStream.addEventListener('onNetworkStateChange', (state) => {
+  console.log(`Network connected: ${state.isConnected}`);
+  console.log(`Connection type: ${state.type}`);
 });
 ```
 
@@ -318,6 +360,11 @@ interface PlaybackStats {
   bufferHealth: number;       // 0-100 percentage
   droppedFrames: number;      // Dropped audio frames
   bitRate: number;           // Actual bitrate in kbps
+  bufferedPosition: number;   // End position of buffer in seconds
+  currentPosition: number;    // Current playback position
+  bufferedPercentage: number; // Percentage of total duration buffered
+  isBuffering: boolean;       // Currently buffering
+  playWhenReady: boolean;     // Will play when buffer is ready
 }
 ```
 
@@ -326,14 +373,15 @@ interface PlaybackStats {
 ```typescript
 import React, { useEffect, useState } from 'react';
 import { View, Button, Text } from 'react-native';
-import AudioStream, { PlaybackState } from '@mustafakarali/react-native-audio-stream';
+import AudioStream, { PlaybackState, LogLevel } from '@mustafakarali/react-native-audio-stream';
 
 export default function AudioPlayer() {
   const [state, setState] = useState<PlaybackState>(PlaybackState.IDLE);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [metadata, setMetadata] = useState({ title: '', artist: '' });
 
   useEffect(() => {
-    // Initialize audio stream
+    // Initialize audio stream (optional)
     AudioStream.initialize({
       enableBackgroundMode: true,
       enableCache: true,
@@ -344,6 +392,9 @@ export default function AudioPlayer() {
     AudioStream.addEventListener('onStateChange', setState);
     AudioStream.addEventListener('onProgress', (data) => {
       setProgress({ current: data.currentTime, total: data.duration });
+    });
+    AudioStream.addEventListener('onMetadata', (data) => {
+      setMetadata({ title: data.title || '', artist: data.artist || '' });
     });
 
     return () => {
@@ -363,10 +414,14 @@ export default function AudioPlayer() {
   return (
     <View>
       <Text>State: {state}</Text>
-      <Text>Progress: {progress.current}s / {progress.total}s</Text>
+      <Text>Progress: {progress.current.toFixed(1)}s / {progress.total.toFixed(1)}s</Text>
+      {metadata.title ? (
+        <Text>Now Playing: {metadata.title} - {metadata.artist}</Text>
+      ) : null}
       <Button title="Play" onPress={handlePlay} />
       <Button title="Pause" onPress={() => AudioStream.pause()} />
       <Button title="Stop" onPress={() => AudioStream.stop()} />
+      <Button title="Cancel" onPress={() => AudioStream.cancelStream()} />
     </View>
   );
 }
@@ -399,6 +454,25 @@ Features demonstrated:
 - And more...
 
 ## Advanced Usage
+
+### HLS/DASH Streaming
+
+The library automatically detects and handles HLS (.m3u8) and DASH (.mpd) streams using native platform players.
+
+```typescript
+// HLS streaming
+await AudioStream.startStream('https://example.com/playlist.m3u8');
+
+// DASH streaming  
+await AudioStream.startStream('https://example.com/manifest.mpd');
+
+// With authentication
+await AudioStream.startStream('https://example.com/playlist.m3u8', {
+  headers: {
+    'Authorization': 'Bearer token',
+  },
+});
+```
 
 ### Custom HTTP Headers
 
@@ -442,6 +516,19 @@ AudioStream.addEventListener('onError', (error) => {
   }
 });
 ```
+
+#### Error Codes
+
+| Code | Description | Recoverable |
+|------|-------------|-------------|
+| `NETWORK_ERROR` | Network connection failed | ✅ Yes |
+| `TIMEOUT_ERROR` | Request timed out | ✅ Yes |
+| `HTTP_ERROR` | HTTP error (4xx, 5xx) | ❓ Depends |
+| `PARSE_ERROR` | Unable to parse stream | ❌ No |
+| `DECODER_ERROR` | Audio codec not supported | ❌ No |
+| `INVALID_URL` | Malformed URL | ❌ No |
+| `INVALID_STATE` | Invalid player state | ❌ No |
+| `UNKNOWN_ERROR` | Unknown error occurred | ❓ Depends |
 
 ## Troubleshooting
 
