@@ -53,7 +53,6 @@ import com.google.android.exoplayer2.util.MimeTypes;
 import com.google.android.exoplayer2.util.Util;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.LoadControl;
-import com.google.android.exoplayer2.data.DataSpec;
 import com.google.android.exoplayer2.metadata.Metadata;
 
 import java.io.File;
