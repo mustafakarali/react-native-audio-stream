@@ -6,6 +6,7 @@ import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -17,6 +18,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
@@ -42,13 +44,17 @@ import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
 import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor;
 import com.google.android.exoplayer2.upstream.cache.SimpleCache;
+import com.google.android.exoplayer2.util.BundleUtil;
+import com.google.android.exoplayer2.util.MimeTypes;
 import com.google.android.exoplayer2.util.Util;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.LoadControl;
+import com.google.android.exoplayer2.data.DataSpec;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
@@ -57,6 +63,8 @@ import java.util.TimerTask;
 import javax.annotation.Nullable;
 
 import okhttp3.OkHttpClient;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     private static final String TAG = "RNAudioStream";
@@ -246,87 +254,202 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void startStream(String url, ReadableMap config, Promise promise) {
-        if (!isInitialized) {
-            promise.reject("INVALID_STATE", "AudioStream not initialized");
-            return;
-        }
-
         try {
             currentUrl = url;
-            if (config != null) {
-                this.config = config;
-            }
-
-            updateState(PlaybackState.LOADING);
-            bufferStartTime = System.currentTimeMillis();
-            totalBytesReceived = 0;
+            this.config = config;
 
             mainHandler.post(() -> {
                 try {
-                    // Build media item with headers if provided
-                    MediaItem.Builder mediaItemBuilder = new MediaItem.Builder()
-                            .setUri(Uri.parse(url));
-
-                    if (this.config.hasKey("headers")) {
+                    // Update configuration
+                    boolean useCache = config != null && config.hasKey("enableCache") && config.getBoolean("enableCache");
+                    
+                    // Determine if it's HLS/DASH
+                    boolean isHLS = url.endsWith(".m3u8") || url.contains("playlist.m3u8");
+                    boolean isDASH = url.endsWith(".mpd");
+                    boolean isHTTP = url.startsWith("http://") || url.startsWith("https://");
+                    
+                    // Determine HTTP method
+                    String httpMethod = "GET";
+                    if (config != null && config.hasKey("method")) {
+                        httpMethod = config.getString("method");
+                    }
+                    
+                    MediaItem mediaItem;
+                    
+                    if (isHTTP && "POST".equals(httpMethod)) {
+                        // For POST requests, we need to create a custom DataSource
                         Map<String, String> headers = new HashMap<>();
-                        ReadableMap headersMap = this.config.getMap("headers");
+                        if (config != null && config.hasKey("headers")) {
+                            ReadableMap headersMap = config.getMap("headers");
+                            if (headersMap != null) {
+                                ReadableMapKeySetIterator iterator = headersMap.keySetIterator();
+                                while (iterator.hasNextKey()) {
+                                    String key = iterator.nextKey();
+                                    headers.put(key, headersMap.getString(key));
+                                }
+                            }
+                        }
+                        
+                        // Get POST body
+                        byte[] postData = null;
+                        if (config != null && config.hasKey("body")) {
+                            String bodyString = null;
+                            if (config.getType("body") == ReadableType.String) {
+                                bodyString = config.getString("body");
+                            } else if (config.getType("body") == ReadableType.Map) {
+                                // Convert map to JSON
+                                try {
+                                    JSONObject jsonBody = new JSONObject();
+                                    ReadableMap bodyMap = config.getMap("body");
+                                    ReadableMapKeySetIterator iterator = bodyMap.keySetIterator();
+                                    while (iterator.hasNextKey()) {
+                                        String key = iterator.nextKey();
+                                        switch (bodyMap.getType(key)) {
+                                            case String:
+                                                jsonBody.put(key, bodyMap.getString(key));
+                                                break;
+                                            case Number:
+                                                jsonBody.put(key, bodyMap.getDouble(key));
+                                                break;
+                                            case Boolean:
+                                                jsonBody.put(key, bodyMap.getBoolean(key));
+                                                break;
+                                            default:
+                                                break;
+                                        }
+                                    }
+                                    bodyString = jsonBody.toString();
+                                    if (!headers.containsKey("Content-Type")) {
+                                        headers.put("Content-Type", "application/json");
+                                    }
+                                } catch (JSONException e) {
+                                    Log.e(TAG, "Failed to convert body to JSON", e);
+                                }
+                            }
+                            
+                            if (bodyString != null) {
+                                postData = bodyString.getBytes(StandardCharsets.UTF_8);
+                                Log.i(TAG, "POST body size: " + postData.length + " bytes");
+                            }
+                        }
+                        
+                        // Create custom DataSource for POST
+                        HttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
+                                .setDefaultRequestProperties(headers)
+                                .setAllowCrossProtocolRedirects(true);
+                        
+                        if (postData != null) {
+                            // Create a special DataSpec for POST request
+                            DataSpec dataSpec = new DataSpec.Builder()
+                                    .setUri(Uri.parse(url))
+                                    .setHttpMethod(DataSpec.HTTP_METHOD_POST)
+                                    .setHttpBody(postData)
+                                    .setHttpRequestHeaders(headers)
+                                    .build();
+                            
+                            // Use a custom MediaSource for POST
+                            ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(httpDataSourceFactory)
+                                    .createMediaSource(MediaItem.fromUri(url));
+                            
+                            player.setMediaSource(mediaSource);
+                            player.prepare();
+                            
+                            updateState(PlaybackState.LOADING);
+                            sendEvent("onStreamStart", Arguments.createMap());
+                            
+                            if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
+                                player.play();
+                            }
+                            
+                            startProgressTimer();
+                            startStatsTimer();
+                            promise.resolve(true);
+                            return;
+                        }
+                    }
+                    
+                    // For GET requests or if POST has no body, use normal approach
+                    Map<String, String> headers = new HashMap<>();
+                    if (config != null && config.hasKey("headers")) {
+                        ReadableMap headersMap = config.getMap("headers");
                         if (headersMap != null) {
-                            com.facebook.react.bridge.ReadableMapKeySetIterator iterator = headersMap.keySetIterator();
+                            ReadableMapKeySetIterator iterator = headersMap.keySetIterator();
                             while (iterator.hasNextKey()) {
                                 String key = iterator.nextKey();
                                 headers.put(key, headersMap.getString(key));
                             }
                         }
-                        mediaItemBuilder.setRequestMetadata(
-                            new MediaItem.RequestMetadata.Builder()
-                                .setExtras(null)
-                                .build()
-                        );
                     }
-
-                    MediaItem mediaItem = mediaItemBuilder.build();
                     
-                    // Create appropriate media source based on URL
-                    MediaSource mediaSource;
-                    if (url.endsWith(".m3u8") || url.contains("playlist.m3u8")) {
-                        // HLS stream
-                        mediaSource = new HlsMediaSource.Factory(dataSourceFactory)
-                                .createMediaSource(mediaItem);
-                    } else if (url.endsWith(".mpd")) {
-                        // DASH stream
-                        mediaSource = new DashMediaSource.Factory(dataSourceFactory)
-                                .createMediaSource(mediaItem);
-                    } else if (url.endsWith(".ism") || url.endsWith(".isml")) {
-                        // SmoothStreaming
-                        mediaSource = new SsMediaSource.Factory(dataSourceFactory)
-                                .createMediaSource(mediaItem);
+                    if (isHLS) {
+                        mediaItem = new MediaItem.Builder()
+                                .setUri(url)
+                                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                                .setRequestMetadata(new MediaItem.RequestMetadata.Builder()
+                                        .setExtras(Bundle.EMPTY)
+                                        .build())
+                                .build();
+                        
+                        HlsMediaSource hlsMediaSource = new HlsMediaSource.Factory(
+                                useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
+                                        .setDefaultRequestProperties(headers)
+                        ).createMediaSource(mediaItem);
+                        
+                        player.setMediaSource(hlsMediaSource);
+                    } else if (isDASH) {
+                        mediaItem = new MediaItem.Builder()
+                                .setUri(url)
+                                .setMimeType(MimeTypes.APPLICATION_MPD)
+                                .build();
+                        
+                        DashMediaSource dashMediaSource = new DashMediaSource.Factory(
+                                useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
+                                        .setDefaultRequestProperties(headers)
+                        ).createMediaSource(mediaItem);
+                        
+                        player.setMediaSource(dashMediaSource);
                     } else {
-                        // Progressive download (normal MP3, etc.)
-                        mediaSource = new DefaultMediaSourceFactory(dataSourceFactory)
-                                .createMediaSource(mediaItem);
+                        // Regular HTTP/HTTPS stream
+                        mediaItem = new MediaItem.Builder()
+                                .setUri(url)
+                                .setRequestMetadata(new MediaItem.RequestMetadata.Builder()
+                                        .setExtras(Bundle.EMPTY)
+                                        .build())
+                                .build();
+                        
+                        if (headers.size() > 0 || useCache) {
+                            ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                                    useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
+                                            .setDefaultRequestProperties(headers)
+                            ).createMediaSource(mediaItem);
+                            
+                            player.setMediaSource(mediaSource);
+                        } else {
+                            player.setMediaItem(mediaItem);
+                        }
                     }
                     
-                    player.setMediaSource(mediaSource);
                     player.prepare();
-
-                    if (this.config.hasKey("autoPlay") && this.config.getBoolean("autoPlay")) {
+                    updateState(PlaybackState.LOADING);
+                    sendEvent("onStreamStart", Arguments.createMap());
+                    
+                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
                         player.play();
                     }
-
-                    sendEvent("onStreamStart", Arguments.createMap());
+                    
                     startProgressTimer();
                     startStatsTimer();
-
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to start stream", e);
-                    updateState(PlaybackState.ERROR);
+                    promise.reject("START_ERROR", "Failed to start stream", e);
+                    return;
                 }
             });
 
             promise.resolve(true);
         } catch (Exception e) {
             Log.e(TAG, "Failed to start stream", e);
-            promise.reject("STREAM_START_ERROR", "Failed to start stream", e);
+            promise.reject("START_ERROR", "Failed to start stream", e);
         }
     }
 

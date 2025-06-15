@@ -36,6 +36,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.8.0] - 2025-01-20
+
+### Added
+- 🚀 **POST Request Support**: Full HTTP POST support for `startStream()` method
+- Support for POST body (both string and object formats)
+- Automatic JSON serialization for object bodies
+- Direct TTS service integration without proxy servers
+- Works with ElevenLabs, Deepgram, and other TTS APIs
+
+### Technical Details
+- iOS: Uses NSMutableURLRequest with HTTPMethod and HTTPBody
+- Android: Custom DataSource with DataSpec for POST requests
+- Supports custom headers with POST requests
+- Automatic Content-Type detection for JSON bodies
+
+### Use Cases
+- Direct TTS streaming from services requiring POST requests
+- API endpoints that need request bodies
+- Authentication tokens in POST body
+- Complex query parameters via POST
+
+### Example
+```typescript
+await AudioStream.startStream('https://api.elevenlabs.io/v1/text-to-speech/voice-id/stream', {
+  method: 'POST',
+  headers: {
+    'xi-api-key': 'your-api-key',
+    'Content-Type': 'application/json',
+  },
+  body: {
+    text: 'Hello world',
+    model_id: 'eleven_multilingual_v2',
+    voice_settings: {
+      stability: 0.5,
+      similarity_boost: 0.5,
+    },
+  },
+  autoPlay: true,
+});
+```
+
 ## [1.7.0] - 2025-01-20
 
 ### Added

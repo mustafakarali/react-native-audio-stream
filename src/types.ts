@@ -67,8 +67,10 @@ export interface AudioStreamConfig {
   // Logging
   logLevel?: LogLevel;
   
-  // Headers for HTTP requests
+  // HTTP configuration
   headers?: Record<string, string>;
+  method?: 'GET' | 'POST'; // default: 'GET'
+  body?: string | Record<string, any>; // For POST requests
   
   // iOS 26 Features
   enableRecording?: boolean; // default: false

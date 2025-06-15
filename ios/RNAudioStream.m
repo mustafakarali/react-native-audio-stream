@@ -1226,11 +1226,43 @@ RCT_EXPORT_METHOD(getEqualizer:(RCTPromiseResolveBlock)resolve
     self.totalBytesReceived = 0;
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    
+    // Set HTTP method
+    NSString *httpMethod = self.config[@"method"] ?: @"GET";
+    [request setHTTPMethod:httpMethod];
+    
+    // Set headers
     NSDictionary *headers = self.config[@"headers"];
     if (headers) {
         [headers enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
             [request setValue:value forHTTPHeaderField:key];
         }];
+    }
+    
+    // Set body for POST requests
+    if ([httpMethod isEqualToString:@"POST"] && self.config[@"body"]) {
+        NSError *error = nil;
+        NSData *bodyData = nil;
+        
+        if ([self.config[@"body"] isKindOfClass:[NSString class]]) {
+            // If body is already a JSON string
+            bodyData = [self.config[@"body"] dataUsingEncoding:NSUTF8StringEncoding];
+        } else if ([self.config[@"body"] isKindOfClass:[NSDictionary class]]) {
+            // If body is a dictionary, convert to JSON
+            bodyData = [NSJSONSerialization dataWithJSONObject:self.config[@"body"] 
+                                                      options:0 
+                                                        error:&error];
+            if (!headers[@"Content-Type"]) {
+                [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+            }
+        }
+        
+        if (bodyData) {
+            [request setHTTPBody:bodyData];
+            NSLog(@"[RNAudioStream] POST body size: %lu bytes", (unsigned long)bodyData.length);
+        } else if (error) {
+            NSLog(@"[RNAudioStream] Failed to serialize POST body: %@", error);
+        }
     }
     
     __weak typeof(self) weakSelf = self;
