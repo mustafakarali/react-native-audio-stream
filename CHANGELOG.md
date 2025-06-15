@@ -36,6 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.6.6] - 2025-01-20
+
+### Fixed
+- 🚨 **Critical Android Build Fix**: Fixed "reference to reject is ambiguous" compilation errors
+- Fixed ambiguous method calls by explicitly casting null to (Throwable) in promise.reject calls
+- Affected methods: requestAudioFocus, showInputPicker, enableSpatialAudio, createRoutePickerView
+
+### Technical Details
+- Java compiler couldn't determine which overloaded reject method to use with null parameter
+- Cast null to (Throwable) to explicitly specify the method signature
+
 ## [1.6.5] - 2025-01-20
 
 ### Fixed

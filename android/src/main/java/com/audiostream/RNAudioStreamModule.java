@@ -710,7 +710,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                 if (!isAppInForeground() && !hasActiveForegroundService()) {
                     promise.reject("AUDIO_FOCUS_ERROR", 
                         "Apps targeting Android 15 must be in foreground or have audio foreground service to request audio focus", 
-                        null);
+                        (Throwable) null);
                     return;
                 }
             }
@@ -858,7 +858,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void showInputPicker(Promise promise) {
         // TODO: Implement when Android provides similar API
-        promise.reject("UNSUPPORTED", "Input picker is not available on Android", null);
+        promise.reject("UNSUPPORTED", "Input picker is not available on Android", (Throwable) null);
     }
 
     @ReactMethod
@@ -908,7 +908,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void enableSpatialAudio(boolean enable, Promise promise) {
         // TODO: Implement when Android provides Spatial Audio API
-        promise.reject("UNSUPPORTED", "Spatial audio is not available on Android", null);
+        promise.reject("UNSUPPORTED", "Spatial audio is not available on Android", (Throwable) null);
     }
 
     @ReactMethod
@@ -925,7 +925,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void createRoutePickerView(Promise promise) {
         // TODO: Implement audio route picker for Android
-        promise.reject("UNSUPPORTED", "Route picker view is not available on Android", null);
+        promise.reject("UNSUPPORTED", "Route picker view is not available on Android", (Throwable) null);
     }
 
     // Helper methods
