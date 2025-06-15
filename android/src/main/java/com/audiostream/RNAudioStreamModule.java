@@ -111,6 +111,12 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
 
     private PlaybackState currentState = PlaybackState.IDLE;
 
+    // iOS 26 Feature Placeholders for Android
+    private File streamingFile = null;
+    private FileOutputStream streamingOutputStream = null;
+    private boolean isPlaying = false;
+    private long prebufferThreshold = 16 * 1024; // 16KB default
+
     public RNAudioStreamModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
@@ -1033,6 +1039,77 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
         } catch (Exception e) {
             Log.e(TAG, "Failed to play from data", e);
             promise.reject("PLAY_ERROR", "Failed to play from data", e);
+        }
+    }
+
+    @ReactMethod
+    public void appendToBuffer(String base64Data, Promise promise) {
+        try {
+            if (base64Data == null || base64Data.isEmpty()) {
+                promise.reject("INVALID_DATA", "No data provided", (Throwable) null);
+                return;
+            }
+
+            // Decode base64 to byte array
+            byte[] audioData = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+            if (audioData == null || audioData.length == 0) {
+                promise.reject("DECODE_ERROR", "Failed to decode base64 data", (Throwable) null);
+                return;
+            }
+
+            Log.i(TAG, "Appending to buffer, size: " + audioData.length + " bytes");
+
+            mainHandler.post(() -> {
+                try {
+                    // Initialize streaming components if not already
+                    if (streamingFile == null) {
+                        streamingFile = File.createTempFile("stream", ".mp3", reactContext.getCacheDir());
+                        streamingFile.deleteOnExit();
+                        streamingOutputStream = new FileOutputStream(streamingFile, true); // Append mode
+                        
+                        // Initialize player with progressive media source
+                        if (player == null) {
+                            initializePlayer();
+                        }
+                        
+                        // Create progressive media source for streaming
+                        Uri fileUri = Uri.fromFile(streamingFile);
+                        MediaItem mediaItem = MediaItem.fromUri(fileUri);
+                        ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                            new DefaultHttpDataSource.Factory()
+                        ).createMediaSource(mediaItem);
+                        
+                        player.setMediaSource(mediaSource);
+                        player.prepare();
+                        
+                        updateState(PlaybackState.LOADING);
+                        sendEvent("onStreamStart", Arguments.createMap());
+                        
+                        startProgressTimer();
+                        startStatsTimer();
+                    }
+                    
+                    // Append data to streaming file
+                    streamingOutputStream.write(audioData);
+                    streamingOutputStream.flush();
+                    
+                    // Check buffer level and start playback if ready
+                    if (player != null && !isPlaying && streamingFile.length() >= prebufferThreshold) {
+                        if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
+                            player.play();
+                            isPlaying = true;
+                        }
+                    }
+                    
+                    promise.resolve(true);
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to append to buffer", e);
+                    promise.reject("APPEND_ERROR", "Failed to append to buffer", e);
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to append to buffer", e);
+            promise.reject("APPEND_ERROR", "Failed to append to buffer", e);
         }
     }
 

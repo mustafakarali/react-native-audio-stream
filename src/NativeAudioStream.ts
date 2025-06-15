@@ -15,6 +15,7 @@ export interface Spec extends TurboModule {
   stopStream(): Promise<boolean>;
   cancelStream(): Promise<boolean>;
   playFromData(base64Data: string, config: Object): Promise<boolean>;
+  appendToBuffer(base64Data: string): Promise<boolean>;
   play(): Promise<boolean>;
   pause(): Promise<boolean>;
   stop(): Promise<boolean>;

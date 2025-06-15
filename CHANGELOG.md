@@ -36,6 +36,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.9.0] - 2025-01-20
+
+### Added
+- 🎯 **Real-Time Chunk Streaming**: New `appendToBuffer()` method for true streaming
+- Progressive audio playback - starts playing as soon as enough data is buffered
+- Chunk-based streaming support for low latency TTS applications
+- Optimized buffer management for real-time audio streaming
+
+### Technical Details
+- iOS: Uses NSMutableData buffer with progressive AVAsset loading
+- Android: Temporary file with append mode and progressive MediaSource
+- Automatic playback triggering when prebuffer threshold is reached
+- Memory-efficient chunk processing without loading entire audio
+
+### Use Cases
+- Real-time TTS streaming from ElevenLabs, Deepgram, etc.
+- Live audio streaming with minimal latency
+- Progressive audio download and playback
+- Memory-efficient handling of large audio files
+
+### Example
+```typescript
+// Start empty stream
+await AudioStream.startStream('', { autoPlay: true });
+
+// Stream chunks as they arrive
+const response = await fetch(ttsUrl);
+const reader = response.body?.getReader();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  
+  const base64Chunk = btoa(String.fromCharCode(...new Uint8Array(value)));
+  await AudioStream.appendToBuffer(base64Chunk);
+}
+```
+
 ## [1.8.0] - 2025-01-20
 
 ### Added

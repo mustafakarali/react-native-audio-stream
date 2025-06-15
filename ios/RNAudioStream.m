@@ -482,6 +482,49 @@ RCT_EXPORT_METHOD(playFromData:(NSString *)base64Data
     }
 }
 
+RCT_EXPORT_METHOD(appendToBuffer:(NSString *)base64Data
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        if (!base64Data || base64Data.length == 0) {
+            reject(@"INVALID_DATA", @"No data provided", nil);
+            return;
+        }
+        
+        // Decode base64 to NSData
+        NSData *audioData = [[NSData alloc] initWithBase64EncodedString:base64Data options:0];
+        if (!audioData) {
+            reject(@"DECODE_ERROR", @"Failed to decode base64 data", nil);
+            return;
+        }
+        
+        NSLog(@"[RNAudioStream] Appending to buffer, size: %lu bytes", (unsigned long)audioData.length);
+        
+        // If not already playing/streaming, start progressive streaming
+        if (!self.player || self.player.rate == 0) {
+            [self startProgressiveStreamFromURL:nil];
+        }
+        
+        // Append data to buffer
+        dispatch_async(self.bufferQueue, ^{
+            [self.audioBuffer appendData:audioData];
+            self.totalBytesReceived += audioData.length;
+            
+            // Check if we have enough data to start playback
+            if (!self.isBuffering && self.audioBuffer.length >= self.prebufferThreshold) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self tryStartPlayback];
+                });
+            }
+        });
+        
+        resolve(@(YES));
+    } @catch (NSException *exception) {
+        reject(@"APPEND_ERROR", @"Failed to append to buffer", nil);
+    }
+}
+
 RCT_EXPORT_METHOD(play:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {

@@ -630,6 +630,18 @@ export class AudioStream implements IAudioStream {
     }
   }
 
+  async appendToBuffer(base64Data: string): Promise<void> {
+    this.ensureInitialized();
+    
+    try {
+      logger.debug('Appending to buffer, size:', base64Data.length, 'characters');
+      await RNAudioStream.appendToBuffer(base64Data);
+    } catch (error) {
+      logger.error('Failed to append to buffer:', error);
+      throw error;
+    }
+  }
+
   private ensureInitialized(): void {
     if (!this.isInitialized) {
       throw new Error('AudioStream is not initialized. Call initialize() first.');
