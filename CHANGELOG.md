@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.6.5] - 2025-01-20
+
+### Fixed
+- 🚨 **Critical iOS Crash Fix**: Fixed potential crash in getMetadata when creation date string is less than 4 characters
+- 🔧 **iOS Optimization**: Removed unnecessary AVKit import (only AVFoundation needed for audio)
+
+### Security
+- Added safe string length check before substring operations in metadata extraction
+
 ## [1.6.4] - 2025-01-20
 
 ### Fixed

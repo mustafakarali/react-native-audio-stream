@@ -1,6 +1,5 @@
 #import "RNAudioStream.h"
 #import <AVFoundation/AVFoundation.h>
-#import <AVKit/AVKit.h>
 #import <CoreMedia/CoreMedia.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <React/RCTLog.h>
@@ -988,7 +987,12 @@ RCT_EXPORT_METHOD(getMetadata:(RCTPromiseResolveBlock)resolve
                 } else if ([key isEqualToString:AVMetadataCommonKeyAlbumName]) {
                     metadata[@"album"] = [item stringValue] ?: @"";
                 } else if ([key isEqualToString:AVMetadataCommonKeyCreationDate]) {
-                    metadata[@"year"] = [[item stringValue] substringToIndex:4] ?: @"";
+                    NSString *dateString = [item stringValue];
+                    if (dateString && dateString.length >= 4) {
+                        metadata[@"year"] = [dateString substringToIndex:4];
+                    } else {
+                        metadata[@"year"] = dateString ?: @"";
+                    }
                 }
             }
             
