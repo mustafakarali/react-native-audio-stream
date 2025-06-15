@@ -2,6 +2,21 @@
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://coff.ee/mustafakarali)
 
+> 💔 **Personal Appeal from the Developer**
+> 
+> Dear fellow developers,
+> 
+> I'm facing a critical financial situation with $30,000 in debt that's weighing heavily on my life. I've poured my heart and soul into creating this audio streaming library to help the React Native community. If this package has saved you time, helped your project, or added value to your work, please consider supporting me.
+> 
+> **Even a $10 donation from each user would make a life-changing difference.** 
+> 
+> Your support doesn't just help with code – it helps a fellow developer get back on their feet. Every contribution, no matter how small, brings hope and relief to my difficult situation.
+> 
+> 🙏 Please click the **[Buy Me A Coffee](https://coff.ee/mustafakarali)** button above. Your kindness can truly change a life.
+> 
+> Thank you for your compassion and support,  
+> Mustafa
+
 A comprehensive React Native audio streaming library with real-time playback support for iOS and Android. Built with TypeScript and featuring advanced capabilities like buffering management, network resilience, equalizer support, and background playback.
 
 > ⚠️ **Important**: This is a comprehensive implementation but has not been fully tested in production. Please see [TESTING.md](TESTING.md) for testing requirements and known limitations.

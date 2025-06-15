@@ -47,6 +47,12 @@ typedef NS_ENUM(NSInteger, PlaybackState) {
 // @property (nonatomic, strong) AVRoutePickerView *routePickerView; // Not available in current SDK  
 @property (nonatomic, assign) BOOL supportsEnhancedBuffering;
 @property (nonatomic, assign) BOOL supportsSpatialAudio;
+@property (nonatomic, strong) NSString *lastErrorMessage;
+@property (nonatomic, assign) BOOL hasErrorObserver;
+@property (nonatomic, assign) BOOL hasPlayerObservers;
+@property (nonatomic, assign) BOOL isBuffering;
+@property (nonatomic, assign) NSUInteger prebufferThreshold;
+@property (nonatomic, strong) dispatch_queue_t bufferQueue;
 
 @end
 
@@ -82,6 +88,11 @@ RCT_EXPORT_MODULE()
         self.state = PlaybackStateIdle;
         self.isInitialized = NO;
         self.config = @{};
+        
+        // Initialize buffer queue
+        self.bufferQueue = dispatch_queue_create("com.audiostream.bufferQueue", DISPATCH_QUEUE_SERIAL);
+        self.isBuffering = NO;
+        self.prebufferThreshold = 16 * 1024; // 16KB default
         
         // Initialize cache
         self.audioCache = [[NSCache alloc] init];
@@ -1364,6 +1375,23 @@ RCT_EXPORT_METHOD(getEqualizer:(RCTPromiseResolveBlock)resolve
     }
     
     [self startStatsTimer];
+}
+
+- (void)tryStartPlayback
+{
+    // Check if we have enough data to start playback
+    if (self.audioBuffer.length >= self.prebufferThreshold) {
+        self.isBuffering = NO;
+        [self startPlayback];
+        
+        // Auto play if configured
+        if ([self.config[@"autoPlay"] boolValue]) {
+            [self play];
+        }
+    } else {
+        self.isBuffering = YES;
+        [self updateState:PlaybackStateBuffering];
+    }
 }
 
 - (void)playFromData:(NSData *)data

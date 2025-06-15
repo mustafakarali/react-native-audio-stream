@@ -10,6 +10,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.app.ActivityManager;
+import android.app.Activity;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
@@ -18,6 +20,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.ReadableMapKeySetIterator;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableArray;
@@ -41,6 +44,7 @@ import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import com.google.android.exoplayer2.upstream.HttpDataSource;
 import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
 import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor;
 import com.google.android.exoplayer2.upstream.cache.SimpleCache;
@@ -50,6 +54,7 @@ import com.google.android.exoplayer2.util.Util;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.LoadControl;
 import com.google.android.exoplayer2.data.DataSpec;
+import com.google.android.exoplayer2.metadata.Metadata;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -283,95 +288,9 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     MediaItem mediaItem;
                     
                     if (isHTTP && "POST".equals(httpMethod)) {
-                        // For POST requests, we need to create a custom DataSource
-                        Map<String, String> headers = new HashMap<>();
-                        if (config != null && config.hasKey("headers")) {
-                            ReadableMap headersMap = config.getMap("headers");
-                            if (headersMap != null) {
-                                ReadableMapKeySetIterator iterator = headersMap.keySetIterator();
-                                while (iterator.hasNextKey()) {
-                                    String key = iterator.nextKey();
-                                    headers.put(key, headersMap.getString(key));
-                                }
-                            }
-                        }
-                        
-                        // Get POST body
-                        byte[] postData = null;
-                        if (config != null && config.hasKey("body")) {
-                            String bodyString = null;
-                            if (config.getType("body") == ReadableType.String) {
-                                bodyString = config.getString("body");
-                            } else if (config.getType("body") == ReadableType.Map) {
-                                // Convert map to JSON
-                                try {
-                                    JSONObject jsonBody = new JSONObject();
-                                    ReadableMap bodyMap = config.getMap("body");
-                                    ReadableMapKeySetIterator iterator = bodyMap.keySetIterator();
-                                    while (iterator.hasNextKey()) {
-                                        String key = iterator.nextKey();
-                                        switch (bodyMap.getType(key)) {
-                                            case String:
-                                                jsonBody.put(key, bodyMap.getString(key));
-                                                break;
-                                            case Number:
-                                                jsonBody.put(key, bodyMap.getDouble(key));
-                                                break;
-                                            case Boolean:
-                                                jsonBody.put(key, bodyMap.getBoolean(key));
-                                                break;
-                                            default:
-                                                break;
-                                        }
-                                    }
-                                    bodyString = jsonBody.toString();
-                                    if (!headers.containsKey("Content-Type")) {
-                                        headers.put("Content-Type", "application/json");
-                                    }
-                                } catch (JSONException e) {
-                                    Log.e(TAG, "Failed to convert body to JSON", e);
-                                }
-                            }
-                            
-                            if (bodyString != null) {
-                                postData = bodyString.getBytes(StandardCharsets.UTF_8);
-                                Log.i(TAG, "POST body size: " + postData.length + " bytes");
-                            }
-                        }
-                        
-                        // Create custom DataSource for POST
-                        HttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
-                                .setDefaultRequestProperties(headers)
-                                .setAllowCrossProtocolRedirects(true);
-                        
-                        if (postData != null) {
-                            // Create a special DataSpec for POST request
-                            DataSpec dataSpec = new DataSpec.Builder()
-                                    .setUri(Uri.parse(url))
-                                    .setHttpMethod(DataSpec.HTTP_METHOD_POST)
-                                    .setHttpBody(postData)
-                                    .setHttpRequestHeaders(headers)
-                                    .build();
-                            
-                            // Use a custom MediaSource for POST
-                            ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(httpDataSourceFactory)
-                                    .createMediaSource(MediaItem.fromUri(url));
-                            
-                            player.setMediaSource(mediaSource);
-                            player.prepare();
-                            
-                            updateState(PlaybackState.LOADING);
-                            sendEvent("onStreamStart", Arguments.createMap());
-                            
-                            if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
-                                player.play();
-                            }
-                            
-                            startProgressTimer();
-                            startStatsTimer();
-                            promise.resolve(true);
-                            return;
-                        }
+                        // POST requests are not fully supported by ExoPlayer
+                        // Log warning and continue with normal flow
+                        Log.w(TAG, "POST requests with body are not fully supported in Android. Consider using playFromData() for TTS services.");
                     }
                     
                     // For GET requests or if POST has no body, use normal approach
@@ -882,9 +801,9 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     private boolean isAppInForeground() {
         // Check if app is in foreground
         // This is a simplified check - production apps should use ProcessLifecycleOwner
-        android.app.ActivityManager.RunningAppProcessInfo appProcessInfo = new android.app.ActivityManager.RunningAppProcessInfo();
-        android.app.ActivityManager.getMyMemoryState(appProcessInfo);
-        return (appProcessInfo.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND);
+        ActivityManager.RunningAppProcessInfo appProcessInfo = new ActivityManager.RunningAppProcessInfo();
+        ActivityManager.getMyMemoryState(appProcessInfo);
+        return (appProcessInfo.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND);
     }
 
     private boolean hasActiveForegroundService() {
