@@ -36,6 +36,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New architecture (Turbo Modules) support is partial
 - Package has not been tested in production 
 
+## [1.7.0] - 2025-01-20
+
+### Added
+- 🎵 **Binary Data Playback**: New `playFromData()` method for both iOS and Android
+- Support for base64 encoded audio data playback
+- Full TTS (Text-to-Speech) service integration support
+- Examples for ElevenLabs, Deepgram, and Minimax TTS services
+
+### Technical Details
+- iOS: Utilizes existing internal playFromData method, now exposed to public API
+- Android: Creates temporary file from base64 data and plays using ExoPlayer
+- Supports all audio formats that the platform can decode (MP3, AAC, WAV, etc.)
+
+### Use Cases
+- Direct playback of TTS service responses
+- Playing audio from API responses without URL
+- Offline audio playback from stored base64 data
+- Reduced latency by avoiding URL redirects
+
 ## [1.6.6] - 2025-01-20
 
 ### Fixed

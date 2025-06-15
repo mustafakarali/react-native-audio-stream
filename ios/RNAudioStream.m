@@ -436,24 +436,49 @@ RCT_EXPORT_METHOD(cancelStream:(RCTPromiseResolveBlock)resolve
 {
     @try {
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self.player pause];
-            [self.player replaceCurrentItemWithPlayerItem:nil];
-            
-            [self.progressTimer invalidate];
-            self.progressTimer = nil;
-            
-            [self.statsTimer invalidate];
-            self.statsTimer = nil;
-            
-            [self.dataTask cancel];
-            self.dataTask = nil;
-            
-            self.currentUrl = nil;
+            [self cleanup];
             [self updateState:PlaybackStateIdle];
         });
+        
         resolve(@(YES));
     } @catch (NSException *exception) {
         reject(@"CANCEL_ERROR", @"Failed to cancel stream", nil);
+    }
+}
+
+RCT_EXPORT_METHOD(playFromData:(NSString *)base64Data
+                  config:(NSDictionary *)config
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+    @try {
+        if (!base64Data || base64Data.length == 0) {
+            reject(@"INVALID_DATA", @"No data provided", nil);
+            return;
+        }
+        
+        // Update config if provided
+        if (config && config.count > 0) {
+            NSMutableDictionary *mergedConfig = [NSMutableDictionary dictionaryWithDictionary:self.config ?: @{}];
+            [mergedConfig addEntriesFromDictionary:config];
+            self.config = mergedConfig;
+        }
+        
+        // Decode base64 to NSData
+        NSData *audioData = [[NSData alloc] initWithBase64EncodedString:base64Data options:0];
+        if (!audioData) {
+            reject(@"DECODE_ERROR", @"Failed to decode base64 data", nil);
+            return;
+        }
+        
+        NSLog(@"[RNAudioStream] Playing from data, size: %lu bytes", (unsigned long)audioData.length);
+        
+        // Use existing internal playFromData method
+        [self playFromData:audioData];
+        
+        resolve(@(YES));
+    } @catch (NSException *exception) {
+        reject(@"PLAY_ERROR", @"Failed to play from data", nil);
     }
 }
 

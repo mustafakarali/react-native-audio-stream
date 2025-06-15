@@ -160,7 +160,7 @@ export class AudioStream implements IAudioStream {
       logger.info('Stopping stream');
       await RNAudioStream.stopStream();
       this.currentUrl = null;
-      logger.info('Stream stopped successfully');
+      this.removeAllEventListeners();
     } catch (error) {
       logger.error('Failed to stop stream:', error);
       throw error;
@@ -607,6 +607,25 @@ export class AudioStream implements IAudioStream {
       return viewTag;
     } catch (error) {
       logger.error('Failed to create route picker view:', error);
+      throw error;
+    }
+  }
+
+  async playFromData(base64Data: string, config?: AudioStreamConfig): Promise<void> {
+    this.ensureInitialized();
+    
+    try {
+      const mergedConfig = { ...this.config, ...config };
+      
+      logger.info('Playing from binary data');
+      logger.debug('Data size:', base64Data.length, 'characters');
+      
+      await RNAudioStream.playFromData(base64Data, mergedConfig);
+      
+      // Set up event listeners
+      this.setupNativeEventListeners();
+    } catch (error) {
+      logger.error('Failed to play from data:', error);
       throw error;
     }
   }

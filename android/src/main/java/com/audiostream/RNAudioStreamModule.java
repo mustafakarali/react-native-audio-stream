@@ -47,6 +47,8 @@ import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.LoadControl;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
@@ -841,6 +843,73 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
         } catch (Exception e) {
             Log.e(TAG, "Failed to cancel stream", e);
             promise.reject("CANCEL_ERROR", "Failed to cancel stream", e);
+        }
+    }
+
+    @ReactMethod
+    public void playFromData(String base64Data, ReadableMap config, Promise promise) {
+        try {
+            if (base64Data == null || base64Data.isEmpty()) {
+                promise.reject("INVALID_DATA", "No data provided", (Throwable) null);
+                return;
+            }
+
+            // Update config if provided
+            if (config != null && config.toHashMap().size() > 0) {
+                this.config = config;
+            }
+
+            // Decode base64 to byte array
+            byte[] audioData = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+            if (audioData == null || audioData.length == 0) {
+                promise.reject("DECODE_ERROR", "Failed to decode base64 data", (Throwable) null);
+                return;
+            }
+
+            Log.i(TAG, "Playing from data, size: " + audioData.length + " bytes");
+
+            mainHandler.post(() -> {
+                try {
+                    // Save data to temporary file
+                    File tempFile = File.createTempFile("audio", ".mp3", reactContext.getCacheDir());
+                    tempFile.deleteOnExit();
+                    
+                    try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                        fos.write(audioData);
+                    }
+
+                    // Create MediaItem from file URI
+                    Uri fileUri = Uri.fromFile(tempFile);
+                    MediaItem mediaItem = MediaItem.fromUri(fileUri);
+                    
+                    // Initialize player if needed
+                    if (player == null) {
+                        initializePlayer();
+                    }
+
+                    player.setMediaItem(mediaItem);
+                    player.prepare();
+                    
+                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
+                        player.play();
+                    }
+                    
+                    updateState(PlaybackState.LOADING);
+                    sendEvent("onStreamStart", Arguments.createMap());
+                    
+                    startProgressTimer();
+                    startStatsTimer();
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to write audio data to temp file", e);
+                    promise.reject("FILE_ERROR", "Failed to save audio data", e);
+                    return;
+                }
+            });
+
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to play from data", e);
+            promise.reject("PLAY_ERROR", "Failed to play from data", e);
         }
     }
 

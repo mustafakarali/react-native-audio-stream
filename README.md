@@ -147,6 +147,31 @@ Stop the current stream and clean up resources.
 
 Cancel the current stream immediately and set state to IDLE. Unlike `stopStream()`, this doesn't wait for cleanup.
 
+#### `playFromData(base64Data: string, config?: AudioStreamConfig): Promise<void>`
+
+Play audio from base64 encoded binary data. Useful for TTS services that return audio data directly.
+
+```typescript
+// Example with ElevenLabs TTS
+const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/voice-id', {
+  method: 'POST',
+  headers: {
+    'xi-api-key': 'your-api-key',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ text: 'Hello world' })
+});
+
+// Convert response to base64
+const audioBlob = await response.blob();
+const reader = new FileReader();
+reader.readAsDataURL(audioBlob);
+reader.onloadend = () => {
+  const base64Data = reader.result.split(',')[1]; // Remove data:audio/mpeg;base64, prefix
+  AudioStream.playFromData(base64Data, { autoPlay: true });
+};
+```
+
 ### Playback Control
 
 #### `play(): Promise<void>`
@@ -665,4 +690,71 @@ await AudioStream.useQueuePlayer(true);
 
 // Create a route picker view (returns view tag for React Native)
 const routePickerTag = await AudioStream.createRoutePickerView();
+```
+
+### Text-to-Speech (TTS) Integration
+
+The library fully supports TTS services like ElevenLabs, Deepgram, and Minimax with multiple integration methods:
+
+#### Method 1: Direct URL Streaming (Recommended)
+```typescript
+// ElevenLabs streaming endpoint
+const streamUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`;
+
+await AudioStream.startStream(streamUrl, {
+  headers: {
+    'xi-api-key': ELEVEN_LABS_KEY,
+    'Content-Type': 'application/json'
+  }
+});
+```
+
+#### Method 2: Binary Data Playback
+```typescript
+// For TTS services that return binary audio data
+const response = await fetch('https://api.tts-service.com/synthesize', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${API_KEY}` },
+  body: JSON.stringify({ 
+    text: 'Hello world',
+    voice: 'en-US-Neural2-A'
+  })
+});
+
+// Convert to base64 and play
+const audioBlob = await response.blob();
+const base64 = await blobToBase64(audioBlob);
+await AudioStream.playFromData(base64, { autoPlay: true });
+
+// Helper function
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result?.toString().split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+```
+
+#### Deepgram Example
+```typescript
+// Deepgram returns a URL
+const response = await fetch('https://api.deepgram.com/v1/speak', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    text: 'Hello world',
+    model: 'aura-asteria-en'
+  })
+});
+
+const { url } = await response.json();
+await AudioStream.startStream(url);
 ``` 

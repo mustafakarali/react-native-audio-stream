@@ -159,6 +159,7 @@ export interface IAudioStream {
   startStream(url: string, config?: AudioStreamConfig): Promise<void>;
   stopStream(): Promise<void>;
   cancelStream(): Promise<void>;
+  playFromData(base64Data: string, config?: AudioStreamConfig): Promise<void>;
   
   // Playback control
   play(): Promise<void>;
@@ -234,6 +235,7 @@ export interface AudioStreamNativeModule {
   startStream(url: string, config: AudioStreamConfig): Promise<void>;
   stopStream(): Promise<void>;
   cancelStream(): Promise<void>;
+  playFromData(base64Data: string, config: AudioStreamConfig): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
   stop(): Promise<void>;

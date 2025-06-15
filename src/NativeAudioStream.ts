@@ -14,6 +14,7 @@ export interface Spec extends TurboModule {
   startStream(url: string, config: Object): Promise<boolean>;
   stopStream(): Promise<boolean>;
   cancelStream(): Promise<boolean>;
+  playFromData(base64Data: string, config: Object): Promise<boolean>;
   play(): Promise<boolean>;
   pause(): Promise<boolean>;
   stop(): Promise<boolean>;
