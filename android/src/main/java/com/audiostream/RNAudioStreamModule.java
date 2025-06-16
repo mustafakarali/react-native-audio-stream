@@ -295,7 +295,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     
                     MediaItem mediaItem;
                     
-                    // Handle file paths
+                    // Handle file paths FIRST
                     if (isFilePath) {
                         String filePath = url.startsWith("file://") ? url.substring(7) : url;
                         File file = new File(filePath);
@@ -316,51 +316,68 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         // POST requests are not fully supported by ExoPlayer
                         // Log warning and continue with normal flow
                         Log.w(TAG, "POST requests with body are not fully supported in Android. Consider using playFromData() for TTS services.");
-                    } else if (isHLS) {
-                        mediaItem = new MediaItem.Builder()
-                                .setUri(url)
-                                .setMimeType(MimeTypes.APPLICATION_M3U8)
-                                .setRequestMetadata(new MediaItem.RequestMetadata.Builder()
-                                        .setExtras(Bundle.EMPTY)
-                                        .build())
-                                .build();
-                        
-                        HlsMediaSource hlsMediaSource = new HlsMediaSource.Factory(
-                                useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
-                                        .setDefaultRequestProperties(headers)
-                        ).createMediaSource(mediaItem);
-                        
-                        player.setMediaSource(hlsMediaSource);
-                    } else if (isDASH) {
-                        mediaItem = new MediaItem.Builder()
-                                .setUri(url)
-                                .setMimeType(MimeTypes.APPLICATION_MPD)
-                                .build();
-                        
-                        DashMediaSource dashMediaSource = new DashMediaSource.Factory(
-                                useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
-                                        .setDefaultRequestProperties(headers)
-                        ).createMediaSource(mediaItem);
-                        
-                        player.setMediaSource(dashMediaSource);
-                    } else {
-                        // Regular HTTP/HTTPS stream
-                        mediaItem = new MediaItem.Builder()
-                                .setUri(url)
-                                .setRequestMetadata(new MediaItem.RequestMetadata.Builder()
-                                        .setExtras(Bundle.EMPTY)
-                                        .build())
-                                .build();
-                        
-                        if (headers.size() > 0 || useCache) {
-                            ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                    }
+                    
+                    // For GET requests or if POST has no body, use normal approach
+                    Map<String, String> headers = new HashMap<>();
+                    if (config != null && config.hasKey("headers")) {
+                        ReadableMap headersMap = config.getMap("headers");
+                        if (headersMap != null) {
+                            ReadableMapKeySetIterator iterator = headersMap.keySetIterator();
+                            while (iterator.hasNextKey()) {
+                                String key = iterator.nextKey();
+                                headers.put(key, headersMap.getString(key));
+                            }
+                        }
+                    }
+                    
+                    if (!isFilePath) {
+                        if (isHLS) {
+                            mediaItem = new MediaItem.Builder()
+                                    .setUri(url)
+                                    .setMimeType(MimeTypes.APPLICATION_M3U8)
+                                    .setRequestMetadata(new MediaItem.RequestMetadata.Builder()
+                                            .setExtras(Bundle.EMPTY)
+                                            .build())
+                                    .build();
+                            
+                            HlsMediaSource hlsMediaSource = new HlsMediaSource.Factory(
                                     useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
                                             .setDefaultRequestProperties(headers)
                             ).createMediaSource(mediaItem);
                             
-                            player.setMediaSource(mediaSource);
+                            player.setMediaSource(hlsMediaSource);
+                        } else if (isDASH) {
+                            mediaItem = new MediaItem.Builder()
+                                    .setUri(url)
+                                    .setMimeType(MimeTypes.APPLICATION_MPD)
+                                    .build();
+                            
+                            DashMediaSource dashMediaSource = new DashMediaSource.Factory(
+                                    useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
+                                            .setDefaultRequestProperties(headers)
+                            ).createMediaSource(mediaItem);
+                            
+                            player.setMediaSource(dashMediaSource);
                         } else {
-                            player.setMediaItem(mediaItem);
+                            // Regular HTTP/HTTPS stream
+                            mediaItem = new MediaItem.Builder()
+                                    .setUri(url)
+                                    .setRequestMetadata(new MediaItem.RequestMetadata.Builder()
+                                            .setExtras(Bundle.EMPTY)
+                                            .build())
+                                    .build();
+                            
+                            if (headers.size() > 0 || useCache) {
+                                ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                                        useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
+                                                .setDefaultRequestProperties(headers)
+                                ).createMediaSource(mediaItem);
+                                
+                                player.setMediaSource(mediaSource);
+                            } else {
+                                player.setMediaItem(mediaItem);
+                            }
                         }
                     }
                     
@@ -923,46 +940,6 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
 
             mainHandler.post(() -> {
                 try {
-                    // Store config for later use
-                    this.config = config;
-
-                    // Initialize player if not already initialized
-                    if (player == null) {
-                        initializePlayer();
-                        
-                        // Set up listeners
-                        player.addListener(new Player.Listener() {
-                            @Override
-                            public void onPlaybackStateChanged(int playbackState) {
-                                handlePlaybackStateChange(playbackState);
-                            }
-                            
-                            @Override
-                            public void onPlayerError(PlaybackException error) {
-                                handlePlayerError(error);
-                            }
-                            
-                            @Override
-                            public void onIsPlayingChanged(boolean isPlaying) {
-                                if (isPlaying && currentState != PlaybackState.PLAYING) {
-                                    updateState(PlaybackState.PLAYING);
-                                }
-                            }
-
-                            @Override
-                            public void onTimelineChanged(Timeline timeline, int reason) {
-                                if (timeline.getWindowCount() > 0) {
-                                    extractAndSendMetadata();
-                                }
-                            }
-                            
-                            @Override
-                            public void onMediaMetadataChanged(com.google.android.exoplayer2.MediaMetadata metadata) {
-                                extractAndSendMetadata();
-                            }
-                        });
-                    }
-
                     // Save data to temporary file
                     File tempFile = File.createTempFile("audio", ".mp3", reactContext.getCacheDir());
                     tempFile.deleteOnExit();
@@ -971,32 +948,70 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         fos.write(audioData);
                     }
 
-                    // Use direct file path without file:// prefix
+                    // Call startStream with the file path (not file:// URL)
                     String filePath = tempFile.getAbsolutePath();
-                    MediaItem mediaItem = MediaItem.fromUri(Uri.parse(filePath));
+                    Log.i(TAG, "Saved audio to: " + filePath);
                     
-                    // Create ProgressiveMediaSource with FileDataSource
-                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
-                        new com.google.android.exoplayer2.upstream.FileDataSource.Factory()
-                    ).createMediaSource(mediaItem);
-                    
-                    player.setMediaSource(mediaSource);
-                    player.prepare();
-                    
-                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
-                        player.play();
-                    }
-                    
-                    updateState(PlaybackState.LOADING);
-                    sendEvent("onStreamStart", Arguments.createMap());
-                    
-                    startProgressTimer();
-                    startStatsTimer();
-                    
-                    promise.resolve(true);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to play from data", e);
-                    promise.reject("PLAY_ERROR", "Failed to play from data", e);
+                    // Call startStream on main thread with direct file path
+                    startStream(filePath, config, new Promise() {
+                        @Override
+                        public void resolve(@Nullable Object value) {
+                            promise.resolve(value);
+                        }
+
+                        @Override
+                        public void reject(String code, String message) {
+                            promise.reject(code, message);
+                        }
+
+                        @Override
+                        public void reject(String code, Throwable throwable) {
+                            promise.reject(code, throwable);
+                        }
+
+                        @Override
+                        public void reject(String code, String message, Throwable throwable) {
+                            promise.reject(code, message, throwable);
+                        }
+
+                        @Override
+                        public void reject(Throwable throwable) {
+                            promise.reject("PLAY_ERROR", throwable);
+                        }
+
+                        @Override
+                        public void reject(String code, WritableMap userInfo) {
+                            promise.reject(code, userInfo);
+                        }
+
+                        @Override
+                        public void reject(String code, String message, WritableMap userInfo) {
+                            promise.reject(code, message, userInfo);
+                        }
+
+                        @Override
+                        public void reject(String code, Throwable throwable, WritableMap userInfo) {
+                            promise.reject(code, throwable, userInfo);
+                        }
+
+                        @Override
+                        public void reject(String code, String message, Throwable throwable, WritableMap userInfo) {
+                            promise.reject(code, message, throwable, userInfo);
+                        }
+
+                        @Override
+                        public void reject(String message) {
+                            promise.reject("PLAY_ERROR", message);
+                        }
+
+                        @Override
+                        public void reject(Throwable throwable, WritableMap userInfo) {
+                            promise.reject("PLAY_ERROR", throwable, userInfo);
+                        }
+                    });
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to save audio data", e);
+                    promise.reject("FILE_ERROR", "Failed to save audio data", e);
                 }
             });
         } catch (Exception e) {
