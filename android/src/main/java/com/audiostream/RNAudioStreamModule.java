@@ -59,11 +59,15 @@ import com.google.android.exoplayer2.upstream.ByteArrayDataSource;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 import javax.annotation.Nullable;
 
@@ -1054,7 +1058,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         Uri fileUri = Uri.fromFile(streamingFile);
                         MediaItem mediaItem = MediaItem.fromUri(fileUri);
                         ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
-                            new DefaultHttpDataSource.Factory()
+                            new com.google.android.exoplayer2.upstream.FileDataSource.Factory()
                         ).createMediaSource(mediaItem);
                         
                         player.setMediaSource(mediaSource);
