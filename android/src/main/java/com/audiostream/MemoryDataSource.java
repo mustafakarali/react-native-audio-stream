@@ -31,7 +31,6 @@ public class MemoryDataSource extends BaseDataSource {
 
     public MemoryDataSource() throws IOException {
         super(/* isNetwork= */ false);
-        // Create pipe with larger buffer for smoother streaming
         inputStream = new PipedInputStream(BUFFER_SIZE);
         outputStream = new PipedOutputStream(inputStream);
         Log.d(TAG, "MemoryDataSource created with " + BUFFER_SIZE + " bytes buffer");
@@ -85,7 +84,6 @@ public class MemoryDataSource extends BaseDataSource {
         if (bytesRead > 0) {
             bytesTransferred(bytesRead);
         } else if (bytesRead == -1) {
-            // End of stream
             Log.d(TAG, "End of stream reached");
             return C.RESULT_END_OF_INPUT;
         }

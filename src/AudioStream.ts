@@ -656,4 +656,121 @@ export class AudioStream implements IAudioStream {
       recoverable: code === ErrorCodes.NETWORK_ERROR || code === ErrorCodes.BUFFER_TIMEOUT,
     };
   }
+
+  /**
+   * Start memory-based streaming (Android only)
+   * @platform android
+   */
+  static async startMemoryStream(config?: StreamConfig): Promise<boolean> {
+    if (Platform.OS !== 'android') {
+      throw new Error('Memory streaming is only available on Android');
+    }
+    return NativeAudioStream.startMemoryStream(config || { autoPlay: true });
+  }
+
+  /**
+   * Append audio chunk to memory stream (Android only)
+   * @platform android
+   */
+  static async appendToMemoryStream(base64Data: string): Promise<boolean> {
+    if (Platform.OS !== 'android') {
+      throw new Error('Memory streaming is only available on Android');
+    }
+    return NativeAudioStream.appendToMemoryStream(base64Data);
+  }
+
+  /**
+   * Complete memory stream (Android only)
+   * @platform android
+   */
+  static async completeMemoryStream(): Promise<boolean> {
+    if (Platform.OS !== 'android') {
+      throw new Error('Memory streaming is only available on Android');
+    }
+    return NativeAudioStream.completeMemoryStream();
+  }
+
+  /**
+   * Stream audio from URL with optimal settings
+   * Automatically handles Android/iOS differences
+   */
+  static async streamFromURL(
+    url: string,
+    onChunk?: (chunk: Uint8Array) => void
+  ): Promise<void> {
+    const response = await fetch(url);
+    const reader = response.body!.getReader();
+    
+    if (Platform.OS === 'android') {
+      // Android: Use memory streaming for better performance
+      await this.startMemoryStream({ autoPlay: true });
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        if (onChunk) onChunk(value);
+        
+        // Convert to base64
+        const base64 = btoa(String.fromCharCode(...value));
+        await this.appendToMemoryStream(base64);
+      }
+      
+      await this.completeMemoryStream();
+    } else {
+      // iOS: Use appendToBuffer
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        if (onChunk) onChunk(value);
+        
+        const base64 = btoa(String.fromCharCode(...value));
+        await this.appendToBuffer(base64);
+      }
+    }
+  }
+
+  /**
+   * Simple Text-to-Speech streaming with ElevenLabs
+   */
+  static async streamTTS(text: string, config: {
+    apiKey: string;
+    voiceId: string;
+    model?: string;
+    onProgress?: (status: string) => void;
+  }): Promise<void> {
+    const { apiKey, voiceId, model = 'eleven_multilingual_v2', onProgress } = config;
+    
+    onProgress?.('Connecting...');
+    
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        model_id: model,
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.5,
+        },
+        optimize_streaming_latency: 4,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`TTS API error: ${response.status}`);
+    }
+
+    onProgress?.('Streaming...');
+    
+    await this.streamFromURL(response.url, (chunk) => {
+      onProgress?.(`Received ${chunk.length} bytes`);
+    });
+    
+    onProgress?.('Completed');
+  }
 } 
