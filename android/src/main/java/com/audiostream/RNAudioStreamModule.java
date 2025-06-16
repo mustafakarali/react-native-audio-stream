@@ -127,9 +127,9 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     private boolean isPlaying = false;
     private long prebufferThreshold = 16 * 1024; // 16KB default
     
-    // Memory streaming support
-    private MemoryDataSource memoryDataSource = null;
-    private boolean isMemoryStreaming = false;
+    // Memory streaming support - DISABLED FOR NOW
+    // private MemoryDataSource memoryDataSource = null;
+    // private boolean isMemoryStreaming = false;
 
     public RNAudioStreamModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -933,8 +933,13 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void playFromData(String base64Data, ReadableMap config, Promise promise) {
         try {
+            if (!isInitialized) {
+                promise.reject("NOT_INITIALIZED", "Audio stream is not initialized", (Throwable) null);
+                return;
+            }
+
             if (base64Data == null || base64Data.isEmpty()) {
-                promise.reject("INVALID_DATA", "No data provided", (Throwable) null);
+                promise.reject("INVALID_DATA", "No audio data provided", (Throwable) null);
                 return;
             }
 
@@ -945,87 +950,50 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                 return;
             }
 
-            Log.i(TAG, "Playing from data, size: " + audioData.length + " bytes");
+            Log.i(TAG, "Playing audio data, size: " + audioData.length + " bytes");
 
             mainHandler.post(() -> {
                 try {
-                    // Save data to temporary file
-                    File tempFile = File.createTempFile("audio", ".mp3", reactContext.getCacheDir());
-                    tempFile.deleteOnExit();
+                    // Create ByteArrayDataSource
+                    ByteArrayDataSource dataSource = new ByteArrayDataSource(audioData);
                     
-                    try (FileOutputStream fos = new FileOutputStream(tempFile)) {
-                        fos.write(audioData);
+                    // Create media item
+                    MediaItem mediaItem = new MediaItem.Builder()
+                            .setUri(Uri.parse("data:audio/mp3;base64," + base64Data.substring(0, 50)))
+                            .build();
+                    
+                    // Create media source
+                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                            new DataSource.Factory() {
+                                @Override
+                                public DataSource createDataSource() {
+                                    return dataSource;
+                                }
+                            }
+                    ).createMediaSource(mediaItem);
+                    
+                    player.setMediaSource(mediaSource);
+                    player.prepare();
+                    
+                    updateState(PlaybackState.LOADING);
+                    sendEvent("onStreamStart", Arguments.createMap());
+                    
+                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
+                        player.play();
                     }
-
-                    // Call startStream with the file path (not file:// URL)
-                    String filePath = tempFile.getAbsolutePath();
-                    Log.i(TAG, "Saved audio to: " + filePath);
                     
-                    // Call startStream on main thread with direct file path
-                    startStream(filePath, config, new Promise() {
-                        @Override
-                        public void resolve(@Nullable Object value) {
-                            promise.resolve(value);
-                        }
-
-                        @Override
-                        public void reject(String code, String message) {
-                            promise.reject(code, message);
-                        }
-
-                        @Override
-                        public void reject(String code, Throwable throwable) {
-                            promise.reject(code, throwable);
-                        }
-
-                        @Override
-                        public void reject(String code, String message, Throwable throwable) {
-                            promise.reject(code, message, throwable);
-                        }
-
-                        @Override
-                        public void reject(Throwable throwable) {
-                            promise.reject("PLAY_ERROR", throwable);
-                        }
-
-                        @Override
-                        public void reject(String code, WritableMap userInfo) {
-                            promise.reject(code, userInfo);
-                        }
-
-                        @Override
-                        public void reject(String code, String message, WritableMap userInfo) {
-                            promise.reject(code, message, userInfo);
-                        }
-
-                        @Override
-                        public void reject(String code, Throwable throwable, WritableMap userInfo) {
-                            promise.reject(code, throwable, userInfo);
-                        }
-
-                        @Override
-                        public void reject(String code, String message, Throwable throwable, WritableMap userInfo) {
-                            promise.reject(code, message, throwable, userInfo);
-                        }
-
-                        @Override
-                        public void reject(String message) {
-                            promise.reject("PLAY_ERROR", message);
-                        }
-
-                        @Override
-                        public void reject(Throwable throwable, WritableMap userInfo) {
-                            promise.reject("PLAY_ERROR", throwable, userInfo);
-                        }
-                    });
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to save audio data", e);
-                    promise.reject("FILE_ERROR", "Failed to save audio data", e);
+                    startProgressTimer();
+                    startStatsTimer();
+                    
+                    promise.resolve(true);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to play audio data", e);
+                    promise.reject("PLAYBACK_ERROR", "Failed to play audio data", e);
                 }
             });
         } catch (Exception e) {
-            Log.e(TAG, "Failed to play from data", e);
-            promise.reject("PLAY_ERROR", "Failed to play from data", e);
+            Log.e(TAG, "Failed to decode audio data", e);
+            promise.reject("DECODE_ERROR", "Failed to decode audio data", e);
         }
     }
 
@@ -1182,110 +1150,6 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     public void createRoutePickerView(Promise promise) {
         // TODO: Implement audio route picker for Android
         promise.reject("UNSUPPORTED", "Route picker view is not available on Android", (Throwable) null);
-    }
-
-    @ReactMethod
-    public void startMemoryStream(ReadableMap config, Promise promise) {
-        try {
-            Log.i(TAG, "Starting memory stream");
-            
-            mainHandler.post(() -> {
-                try {
-                    // Initialize player if needed
-                    if (player == null) {
-                        initializePlayer();
-                    }
-                    
-                    // Create memory data source
-                    memoryDataSource = new MemoryDataSource();
-                    isMemoryStreaming = true;
-                    
-                    // Create media source with memory data source
-                    Uri memoryUri = Uri.parse("memory://stream");
-                    MediaItem mediaItem = MediaItem.fromUri(memoryUri);
-                    
-                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
-                        new MemoryDataSource.Factory(memoryDataSource)
-                    ).createMediaSource(mediaItem);
-                    
-                    player.setMediaSource(mediaSource);
-                    player.prepare();
-                    
-                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
-                        player.play();
-                    }
-                    
-                    updateState(PlaybackState.LOADING);
-                    sendEvent("onStreamStart", Arguments.createMap());
-                    
-                    startProgressTimer();
-                    startStatsTimer();
-                    
-                    promise.resolve(true);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to start memory stream", e);
-                    promise.reject("STREAM_ERROR", "Failed to start memory stream", e);
-                }
-            });
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start memory stream", e);
-            promise.reject("STREAM_ERROR", "Failed to start memory stream", e);
-        }
-    }
-
-    @ReactMethod
-    public void appendToMemoryStream(String base64Data, Promise promise) {
-        try {
-            if (!isMemoryStreaming || memoryDataSource == null) {
-                promise.reject("STREAM_ERROR", "Memory stream not started", (Throwable) null);
-                return;
-            }
-            
-            if (base64Data == null || base64Data.isEmpty()) {
-                promise.reject("INVALID_DATA", "No data provided", (Throwable) null);
-                return;
-            }
-
-            // Decode base64 to byte array
-            byte[] audioData = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
-            if (audioData == null || audioData.length == 0) {
-                promise.reject("DECODE_ERROR", "Failed to decode base64 data", (Throwable) null);
-                return;
-            }
-
-            Log.i(TAG, "Appending to memory stream, size: " + audioData.length + " bytes");
-
-            // Write to memory data source in background thread
-            new Thread(() -> {
-                try {
-                    memoryDataSource.writeData(audioData);
-                    promise.resolve(true);
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to write to memory stream", e);
-                    promise.reject("WRITE_ERROR", "Failed to write to memory stream", e);
-                }
-            }).start();
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to append to memory stream", e);
-            promise.reject("APPEND_ERROR", "Failed to append to memory stream", e);
-        }
-    }
-
-    @ReactMethod
-    public void completeMemoryStream(Promise promise) {
-        try {
-            if (isMemoryStreaming && memoryDataSource != null) {
-                memoryDataSource.setComplete();
-                isMemoryStreaming = false;
-                promise.resolve(true);
-            } else {
-                promise.reject("STREAM_ERROR", "No active memory stream", (Throwable) null);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to complete memory stream", e);
-            promise.reject("COMPLETE_ERROR", "Failed to complete memory stream", e);
-        }
     }
 
     // Helper methods
