@@ -496,6 +496,17 @@ Features demonstrated:
 - Cache management tools
 - Comprehensive error handling
 
+### 📱 Quick Examples
+
+- **[Quick Test](./quick-test.js)** - Simple test file to copy into your App.js
+- **[Complete Example](./complete-example.js)** - Full-featured example with:
+  - MP3 playback from URL
+  - Base64 audio playback
+  - ElevenLabs Text-to-Speech integration
+  - Streaming support
+  - Playback controls
+- **[Usage Guide](./USAGE.md)** - Step-by-step usage instructions
+
 **[📖 View More Examples](./docs/EXAMPLES.md)** - Contains additional code examples for:
 - Simple audio player
 - Progress tracking

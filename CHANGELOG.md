@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.10.3] - 2024-12-29
+
+### Fixed
+- Fixed Android build error: removed MemoryDataSource import that was causing compilation failures
+
+## [1.10.2] - 2024-12-28
+
+### Fixed
+- This version was skipped
+
+## [1.10.1] - 2024-12-28
 
 ### Added
 - Initial release of react-native-audio-stream

@@ -55,7 +55,6 @@ import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.LoadControl;
 import com.google.android.exoplayer2.metadata.Metadata;
 import com.google.android.exoplayer2.upstream.ByteArrayDataSource;
-import com.google.android.exoplayer2.upstream.MemoryDataSource;
 
 import java.io.File;
 import java.io.FileOutputStream;
