@@ -700,7 +700,6 @@ export class AudioStream implements IAudioStream {
   ): Promise<void> {
     const response = await fetch(url);
     
-    // @ts-ignore - response.body exists in React Native runtime
     if (!response.body) {
       throw new Error('Response body is empty');
     }
@@ -780,7 +779,6 @@ export class AudioStream implements IAudioStream {
 
     onProgress?.('Streaming...');
     
-    // @ts-ignore - response.body exists in React Native runtime
     if (!response.body) {
       throw new Error('Response body is empty');
     }
