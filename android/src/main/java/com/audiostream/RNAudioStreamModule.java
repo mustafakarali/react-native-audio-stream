@@ -55,6 +55,7 @@ import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.LoadControl;
 import com.google.android.exoplayer2.metadata.Metadata;
 import com.google.android.exoplayer2.upstream.ByteArrayDataSource;
+import com.google.android.exoplayer2.upstream.MemoryDataSource;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -125,6 +126,10 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     private FileOutputStream streamingOutputStream = null;
     private boolean isPlaying = false;
     private long prebufferThreshold = 16 * 1024; // 16KB default
+    
+    // Memory streaming support
+    private MemoryDataSource memoryDataSource = null;
+    private boolean isMemoryStreaming = false;
 
     public RNAudioStreamModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -1177,6 +1182,110 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     public void createRoutePickerView(Promise promise) {
         // TODO: Implement audio route picker for Android
         promise.reject("UNSUPPORTED", "Route picker view is not available on Android", (Throwable) null);
+    }
+
+    @ReactMethod
+    public void startMemoryStream(ReadableMap config, Promise promise) {
+        try {
+            Log.i(TAG, "Starting memory stream");
+            
+            mainHandler.post(() -> {
+                try {
+                    // Initialize player if needed
+                    if (player == null) {
+                        initializePlayer();
+                    }
+                    
+                    // Create memory data source
+                    memoryDataSource = new MemoryDataSource();
+                    isMemoryStreaming = true;
+                    
+                    // Create media source with memory data source
+                    Uri memoryUri = Uri.parse("memory://stream");
+                    MediaItem mediaItem = MediaItem.fromUri(memoryUri);
+                    
+                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                        new MemoryDataSource.Factory(memoryDataSource)
+                    ).createMediaSource(mediaItem);
+                    
+                    player.setMediaSource(mediaSource);
+                    player.prepare();
+                    
+                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
+                        player.play();
+                    }
+                    
+                    updateState(PlaybackState.LOADING);
+                    sendEvent("onStreamStart", Arguments.createMap());
+                    
+                    startProgressTimer();
+                    startStatsTimer();
+                    
+                    promise.resolve(true);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to start memory stream", e);
+                    promise.reject("STREAM_ERROR", "Failed to start memory stream", e);
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start memory stream", e);
+            promise.reject("STREAM_ERROR", "Failed to start memory stream", e);
+        }
+    }
+
+    @ReactMethod
+    public void appendToMemoryStream(String base64Data, Promise promise) {
+        try {
+            if (!isMemoryStreaming || memoryDataSource == null) {
+                promise.reject("STREAM_ERROR", "Memory stream not started", (Throwable) null);
+                return;
+            }
+            
+            if (base64Data == null || base64Data.isEmpty()) {
+                promise.reject("INVALID_DATA", "No data provided", (Throwable) null);
+                return;
+            }
+
+            // Decode base64 to byte array
+            byte[] audioData = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+            if (audioData == null || audioData.length == 0) {
+                promise.reject("DECODE_ERROR", "Failed to decode base64 data", (Throwable) null);
+                return;
+            }
+
+            Log.i(TAG, "Appending to memory stream, size: " + audioData.length + " bytes");
+
+            // Write to memory data source in background thread
+            new Thread(() -> {
+                try {
+                    memoryDataSource.writeData(audioData);
+                    promise.resolve(true);
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to write to memory stream", e);
+                    promise.reject("WRITE_ERROR", "Failed to write to memory stream", e);
+                }
+            }).start();
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to append to memory stream", e);
+            promise.reject("APPEND_ERROR", "Failed to append to memory stream", e);
+        }
+    }
+
+    @ReactMethod
+    public void completeMemoryStream(Promise promise) {
+        try {
+            if (isMemoryStreaming && memoryDataSource != null) {
+                memoryDataSource.setComplete();
+                isMemoryStreaming = false;
+                promise.resolve(true);
+            } else {
+                promise.reject("STREAM_ERROR", "No active memory stream", (Throwable) null);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to complete memory stream", e);
+            promise.reject("COMPLETE_ERROR", "Failed to complete memory stream", e);
+        }
     }
 
     // Helper methods
