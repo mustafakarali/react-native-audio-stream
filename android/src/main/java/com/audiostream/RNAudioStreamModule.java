@@ -54,6 +54,7 @@ import com.google.android.exoplayer2.util.Util;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.LoadControl;
 import com.google.android.exoplayer2.metadata.Metadata;
+import com.google.android.exoplayer2.upstream.ByteArrayDataSource;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -124,8 +125,8 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     public RNAudioStreamModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
-        this.mainHandler = new Handler(Looper.getMainLooper());
         this.audioManager = (AudioManager) reactContext.getSystemService(Context.AUDIO_SERVICE);
+        this.mainHandler = new Handler(Looper.getMainLooper());
     }
 
     @Override
@@ -171,6 +172,11 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                 .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                 .build();
+        
+        // Ensure bandwidthMeter is initialized
+        if (bandwidthMeter == null) {
+            bandwidthMeter = new DefaultBandwidthMeter.Builder(reactContext).build();
+        }
 
         DataSource.Factory httpDataSourceFactory = new OkHttpDataSource.Factory(okHttpClient)
                 .setUserAgent(Util.getUserAgent(reactContext, "RNAudioStream"))
@@ -273,6 +279,9 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     // Update configuration
                     boolean useCache = config != null && config.hasKey("enableCache") && config.getBoolean("enableCache");
                     
+                    // Check if it's a file path
+                    boolean isFilePath = url.startsWith("/") || url.startsWith("file://");
+                    
                     // Determine if it's HLS/DASH
                     boolean isHLS = url.endsWith(".m3u8") || url.contains("playlist.m3u8");
                     boolean isDASH = url.endsWith(".mpd");
@@ -286,26 +295,28 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     
                     MediaItem mediaItem;
                     
-                    if (isHTTP && "POST".equals(httpMethod)) {
+                    // Handle file paths
+                    if (isFilePath) {
+                        String filePath = url.startsWith("file://") ? url.substring(7) : url;
+                        File file = new File(filePath);
+                        
+                        if (!file.exists()) {
+                            promise.reject("FILE_NOT_FOUND", "File does not exist: " + filePath, (Throwable) null);
+                            return;
+                        }
+                        
+                        mediaItem = MediaItem.fromUri(Uri.fromFile(file));
+                        
+                        ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                            new com.google.android.exoplayer2.upstream.FileDataSource.Factory()
+                        ).createMediaSource(mediaItem);
+                        
+                        player.setMediaSource(mediaSource);
+                    } else if (isHTTP && "POST".equals(httpMethod)) {
                         // POST requests are not fully supported by ExoPlayer
                         // Log warning and continue with normal flow
                         Log.w(TAG, "POST requests with body are not fully supported in Android. Consider using playFromData() for TTS services.");
-                    }
-                    
-                    // For GET requests or if POST has no body, use normal approach
-                    Map<String, String> headers = new HashMap<>();
-                    if (config != null && config.hasKey("headers")) {
-                        ReadableMap headersMap = config.getMap("headers");
-                        if (headersMap != null) {
-                            ReadableMapKeySetIterator iterator = headersMap.keySetIterator();
-                            while (iterator.hasNextKey()) {
-                                String key = iterator.nextKey();
-                                headers.put(key, headersMap.getString(key));
-                            }
-                        }
-                    }
-                    
-                    if (isHLS) {
+                    } else if (isHLS) {
                         mediaItem = new MediaItem.Builder()
                                 .setUri(url)
                                 .setMimeType(MimeTypes.APPLICATION_M3U8)
@@ -901,11 +912,6 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                 return;
             }
 
-            // Update config if provided
-            if (config != null && config.toHashMap().size() > 0) {
-                this.config = config;
-            }
-
             // Decode base64 to byte array
             byte[] audioData = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
             if (audioData == null || audioData.length == 0) {
@@ -917,6 +923,46 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
 
             mainHandler.post(() -> {
                 try {
+                    // Store config for later use
+                    this.config = config;
+
+                    // Initialize player if not already initialized
+                    if (player == null) {
+                        initializePlayer();
+                        
+                        // Set up listeners
+                        player.addListener(new Player.Listener() {
+                            @Override
+                            public void onPlaybackStateChanged(int playbackState) {
+                                handlePlaybackStateChange(playbackState);
+                            }
+                            
+                            @Override
+                            public void onPlayerError(PlaybackException error) {
+                                handlePlayerError(error);
+                            }
+                            
+                            @Override
+                            public void onIsPlayingChanged(boolean isPlaying) {
+                                if (isPlaying && currentState != PlaybackState.PLAYING) {
+                                    updateState(PlaybackState.PLAYING);
+                                }
+                            }
+
+                            @Override
+                            public void onTimelineChanged(Timeline timeline, int reason) {
+                                if (timeline.getWindowCount() > 0) {
+                                    extractAndSendMetadata();
+                                }
+                            }
+                            
+                            @Override
+                            public void onMediaMetadataChanged(com.google.android.exoplayer2.MediaMetadata metadata) {
+                                extractAndSendMetadata();
+                            }
+                        });
+                    }
+
                     // Save data to temporary file
                     File tempFile = File.createTempFile("audio", ".mp3", reactContext.getCacheDir());
                     tempFile.deleteOnExit();
@@ -925,16 +971,16 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         fos.write(audioData);
                     }
 
-                    // Create MediaItem from file URI
-                    Uri fileUri = Uri.fromFile(tempFile);
-                    MediaItem mediaItem = MediaItem.fromUri(fileUri);
+                    // Use direct file path without file:// prefix
+                    String filePath = tempFile.getAbsolutePath();
+                    MediaItem mediaItem = MediaItem.fromUri(Uri.parse(filePath));
                     
-                    // Initialize player if needed
-                    if (player == null) {
-                        initializePlayer();
-                    }
-
-                    player.setMediaItem(mediaItem);
+                    // Create ProgressiveMediaSource with FileDataSource
+                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                        new com.google.android.exoplayer2.upstream.FileDataSource.Factory()
+                    ).createMediaSource(mediaItem);
+                    
+                    player.setMediaSource(mediaSource);
                     player.prepare();
                     
                     if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
@@ -946,14 +992,13 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     
                     startProgressTimer();
                     startStatsTimer();
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to write audio data to temp file", e);
-                    promise.reject("FILE_ERROR", "Failed to save audio data", e);
-                    return;
+                    
+                    promise.resolve(true);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to play from data", e);
+                    promise.reject("PLAY_ERROR", "Failed to play from data", e);
                 }
             });
-
-            promise.resolve(true);
         } catch (Exception e) {
             Log.e(TAG, "Failed to play from data", e);
             promise.reject("PLAY_ERROR", "Failed to play from data", e);
