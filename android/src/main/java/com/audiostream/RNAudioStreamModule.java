@@ -26,35 +26,38 @@ import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
-import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.PlaybackException;
-import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.Timeline;
-import com.google.android.exoplayer2.ext.okhttp.OkHttpDataSource;
-import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
-import com.google.android.exoplayer2.source.MediaSource;
-import com.google.android.exoplayer2.source.ProgressiveMediaSource;
-import com.google.android.exoplayer2.source.hls.HlsMediaSource;
-import com.google.android.exoplayer2.source.dash.DashMediaSource;
-import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
-import com.google.android.exoplayer2.upstream.DataSource;
-import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
-import com.google.android.exoplayer2.upstream.DefaultDataSource;
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
-import com.google.android.exoplayer2.upstream.HttpDataSource;
-import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
-import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor;
-import com.google.android.exoplayer2.upstream.cache.SimpleCache;
-import com.google.android.exoplayer2.util.BundleUtil;
-import com.google.android.exoplayer2.util.MimeTypes;
-import com.google.android.exoplayer2.util.Util;
-import com.google.android.exoplayer2.DefaultLoadControl;
-import com.google.android.exoplayer2.LoadControl;
-import com.google.android.exoplayer2.metadata.Metadata;
-import com.google.android.exoplayer2.upstream.ByteArrayDataSource;
+// AndroidX Media3 imports (replacing ExoPlayer2)
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.MediaMetadata;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.common.Timeline;
+import androidx.media3.common.MimeTypes;
+import androidx.media3.common.util.Util;
+import androidx.media3.common.AudioAttributes;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.exoplayer.LoadControl;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.exoplayer.hls.HlsMediaSource;
+import androidx.media3.exoplayer.dash.DashMediaSource;
+import androidx.media3.exoplayer.smoothstreaming.SsMediaSource;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DefaultBandwidthMeter;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.HttpDataSource;
+import androidx.media3.datasource.FileDataSource;
+import androidx.media3.datasource.ByteArrayDataSource;
+import androidx.media3.datasource.cache.CacheDataSource;
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor;
+import androidx.media3.datasource.cache.SimpleCache;
+import androidx.media3.datasource.okhttp.OkHttpDataSource;
+import androidx.media3.common.Metadata;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -68,6 +71,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.Base64;
 
 import javax.annotation.Nullable;
 
@@ -223,7 +227,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     .build();
 
             // Setup audio attributes
-            com.google.android.exoplayer2.audio.AudioAttributes audioAttributes = new com.google.android.exoplayer2.audio.AudioAttributes.Builder()
+            androidx.media3.common.AudioAttributes audioAttributes = new androidx.media3.common.AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .build();
@@ -257,7 +261,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                 }
                 
                 @Override
-                public void onMediaMetadataChanged(com.google.android.exoplayer2.MediaMetadata metadata) {
+                public void onMediaMetadataChanged(MediaMetadata metadata) {
                     extractAndSendMetadata();
                 }
             });
@@ -316,7 +320,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         mediaItem = MediaItem.fromUri(Uri.fromFile(file));
                         
                         ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
-                            new com.google.android.exoplayer2.upstream.FileDataSource.Factory()
+                            new FileDataSource.Factory()
                         ).createMediaSource(mediaItem);
                         
                         player.setMediaSource(mediaSource);
@@ -677,7 +681,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
             WritableMap metadata = Arguments.createMap();
             
             if (player != null && player.getMediaMetadata() != null) {
-                com.google.android.exoplayer2.MediaMetadata mediaMetadata = player.getMediaMetadata();
+                MediaMetadata mediaMetadata = player.getMediaMetadata();
                 
                 if (mediaMetadata.title != null) {
                     metadata.putString("title", mediaMetadata.title.toString());
@@ -1030,7 +1034,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         Uri fileUri = Uri.fromFile(streamingFile);
                         MediaItem mediaItem = MediaItem.fromUri(fileUri);
                         ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
-                            new com.google.android.exoplayer2.upstream.FileDataSource.Factory()
+                            new FileDataSource.Factory()
                         ).createMediaSource(mediaItem);
                         
                         player.setMediaSource(mediaSource);

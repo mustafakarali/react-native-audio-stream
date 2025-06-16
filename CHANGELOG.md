@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.4] - 2024-12-29
+
+### Changed
+- **BREAKING CHANGE**: Migrated from ExoPlayer2 to AndroidX Media3
+  - All ExoPlayer2 dependencies replaced with AndroidX Media3 equivalents
+  - Improved performance and better future support
+  - No API changes - all methods remain the same
+  - Smaller APK size with modular dependencies
+
+### Technical Details
+- Updated Android dependencies:
+  - `com.google.android.exoplayer2:*:2.19.1` → `androidx.media3:*:1.2.0`
+  - All imports updated to use `androidx.media3` packages
+  - Using Media3's modular architecture for better optimization
+
+### Notes
+- This is a major internal change but maintains full backward compatibility
+- Media3 is the new home of ExoPlayer and receives all new features
+- Better integration with AndroidX ecosystem
+
 ## [1.10.3] - 2024-12-29
 
 ### Fixed
