@@ -1,6 +1,6 @@
 {
   "name": "@mustafakarali/react-native-audio-stream",
-  "version": "1.10.18",
+  "version": "1.10.19",
   "description": "React Native Audio Stream - High-performance audio streaming for React Native",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
@@ -20,7 +20,11 @@
     "!ios/build",
     "!**/__tests__",
     "!**/__fixtures__",
-    "!**/__mocks__"
+    "!**/__mocks__",
+    "!**/test-*",
+    "!**/*-test.js",
+    "!**/*-example.js",
+    "!**/examples/**"
   ],
   "scripts": {
     "test": "jest",
@@ -77,15 +81,15 @@
     "metro-react-native-babel-preset": "^0.77.0",
     "pod-install": "^0.1.39",
     "prettier": "^3.0.3",
-    "react": "18.2.0",
-    "react-native": "0.80.0",
+    "react": "^18.2.0",
+    "react-native": "^0.72.0",
     "react-native-builder-bob": "^0.23.2",
     "release-it": "^16.2.1",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "react": "*",
-    "react-native": "*"
+    "react": ">=18.2.0",
+    "react-native": ">=0.72.0"
   },
   "jest": {
     "preset": "react-native",
