@@ -55,12 +55,12 @@ import androidx.media3.exoplayer.MediaClock;
 import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.dash.DashMediaSource;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
-import androidx.media3.exoplayer.metadata.Metadata;
 import androidx.media3.exoplayer.smoothstreaming.SsMediaSource;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.MergingMediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.exoplayer.source.SingleSampleMediaSource;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 
