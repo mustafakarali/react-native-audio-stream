@@ -4,4 +4,4 @@ export { logger } from './logger';
 
 // Default export for convenience - singleton instance
 import { AudioStream } from './AudioStream';
-export default AudioStream; 
+export default AudioStream.getInstance(); 
