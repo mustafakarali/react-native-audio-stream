@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.11] - 2025-06-17
+
+### Added
+- Real-time byte-by-byte streaming support (Android only)
+- Custom DataSource implementation for AndroidX Media3
+- New methods: `startRealtimeStream()`, `appendRealtimeData()`, `completeRealtimeStream()`, `getStreamingStats()`
+- PipedInputStream/OutputStream for thread-safe data transfer
+
+### Fixed
+- HLS/M3U8 segment transitions now handle buffering properly
+- Fixed initial playback issue where audio wouldn't start on first initialize
+- Improved HLS configuration with proper timeouts and chunkless preparation
+- Better LoadControl settings for all streaming types
+
+### Improved
+- Buffer management for live streams
+- HLS segment prefetching and caching
+- Auto-play behavior now uses `setPlayWhenReady()` before prepare
+
 ## [1.10.10] - 2025-06-17
 
 ### Fixed

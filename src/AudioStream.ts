@@ -642,6 +642,80 @@ export class AudioStream implements IAudioStream {
     }
   }
 
+  // Real-time streaming methods (Android only)
+  async startRealtimeStream(config?: AudioStreamConfig): Promise<void> {
+    this.ensureInitialized();
+    
+    if (Platform.OS !== 'android') {
+      throw new Error('Real-time streaming is only available on Android');
+    }
+    
+    try {
+      const mergedConfig = { ...this.config, ...config };
+      logger.info('Starting real-time stream');
+      
+      await RNAudioStream.startRealtimeStream(mergedConfig);
+      
+      // Set up event listeners
+      this.setupNativeEventListeners();
+    } catch (error) {
+      logger.error('Failed to start real-time stream:', error);
+      throw error;
+    }
+  }
+
+  async appendRealtimeData(base64Data: string): Promise<void> {
+    this.ensureInitialized();
+    
+    if (Platform.OS !== 'android') {
+      throw new Error('Real-time streaming is only available on Android');
+    }
+    
+    try {
+      logger.debug('Appending real-time data, size:', base64Data.length, 'characters');
+      await RNAudioStream.appendRealtimeData(base64Data);
+    } catch (error) {
+      logger.error('Failed to append real-time data:', error);
+      throw error;
+    }
+  }
+
+  async completeRealtimeStream(): Promise<void> {
+    this.ensureInitialized();
+    
+    if (Platform.OS !== 'android') {
+      throw new Error('Real-time streaming is only available on Android');
+    }
+    
+    try {
+      logger.info('Completing real-time stream');
+      await RNAudioStream.completeRealtimeStream();
+    } catch (error) {
+      logger.error('Failed to complete real-time stream:', error);
+      throw error;
+    }
+  }
+
+  async getStreamingStats(): Promise<{
+    bytesWritten: number;
+    bytesRead: number;
+    isActive: boolean;
+    isReady: boolean;
+  }> {
+    this.ensureInitialized();
+    
+    if (Platform.OS !== 'android') {
+      throw new Error('Real-time streaming is only available on Android');
+    }
+    
+    try {
+      return await RNAudioStream.getStreamingStats();
+    } catch (error) {
+      logger.error('Failed to get streaming stats:', error);
+      throw error;
+    }
+  }
+
   private ensureInitialized(): void {
     if (!this.isInitialized) {
       throw new Error('AudioStream is not initialized. Call initialize() first.');

@@ -63,7 +63,9 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.exoplayer.source.SingleSampleMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.exoplayer.trackselection.TrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
+import androidx.media3.exoplayer.util.SeekParameters;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -139,6 +141,10 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     // Memory streaming support - DISABLED FOR NOW
     // private boolean isMemoryStreaming = false;
 
+    // Real-time streaming components
+    private RealtimeStreamingDataSource streamingDataSource = null;
+    private boolean isStreamingActive = false;
+
     public RNAudioStreamModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
@@ -210,73 +216,82 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     }
 
     private void initializePlayer() {
+        if (player != null) {
+            return;
+        }
+
         mainHandler.post(() -> {
-            DefaultTrackSelector trackSelector = new DefaultTrackSelector(reactContext);
-            
-            // Configure load control for better buffering
-            LoadControl loadControl = new DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(
-                        15000,  // Min buffer 15 seconds
-                        60000,  // Max buffer 60 seconds
-                        2500,   // Playback buffer 2.5 seconds
-                        5000    // Rebuffer 5 seconds
-                    )
-                    .setPrioritizeTimeOverSizeThresholds(false)
-                    .build();
-            
-            player = new ExoPlayer.Builder(reactContext)
-                    .setTrackSelector(trackSelector)
-                    .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
-                    .setBandwidthMeter(bandwidthMeter)
-                    .setLoadControl(loadControl)
-                    .build();
+            try {
+                // Create LoadControl for better buffering
+                DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
+                        .setBufferDurationsMs(
+                                30000,  // Min buffer: 30 seconds
+                                60000,  // Max buffer: 60 seconds
+                                2500,   // Buffer for playback: 2.5 seconds  
+                                5000    // Buffer for playback after rebuffer: 5 seconds
+                        )
+                        .setTargetBufferBytes(C.LENGTH_UNSET)
+                        .setPrioritizeTimeOverSizeThresholds(true)
+                        .build();
 
-            // Setup audio attributes
-            androidx.media3.common.AudioAttributes audioAttributes = new androidx.media3.common.AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                    .build();
-            
-            player.setAudioAttributes(audioAttributes, true);
-            
-            // Add player listener
-            player.addListener(new Player.Listener() {
-                @Override
-                public void onPlaybackStateChanged(int playbackState) {
-                    handlePlaybackStateChange(playbackState);
-                }
+                // Track selector with better performance
+                TrackSelector trackSelector = new DefaultTrackSelector(reactContext);
+                
+                // Create ExoPlayer with optimized settings
+                player = new ExoPlayer.Builder(reactContext)
+                        .setLoadControl(loadControl)
+                        .setTrackSelector(trackSelector)
+                        .setBandwidthMeter(bandwidthMeter)
+                        .setSeekBackIncrementMs(10000)
+                        .setSeekForwardIncrementMs(10000)
+                        .build();
 
-                @Override
-                public void onPlayerError(PlaybackException error) {
-                    handlePlayerError(error);
-                }
-
-                @Override
-                public void onIsPlayingChanged(boolean isPlaying) {
-                    if (isPlaying) {
-                        updateState(PlaybackState.PLAYING);
+                // Optimize for streaming
+                player.setSeekParameters(SeekParameters.CLOSEST_SYNC);
+                
+                // Handle playback events
+                player.addListener(new Player.Listener() {
+                    @Override
+                    public void onPlaybackStateChanged(int playbackState) {
+                        handlePlaybackStateChange(playbackState);
                     }
-                }
 
-                @Override
-                public void onTimelineChanged(Timeline timeline, int reason) {
-                    if (timeline.getWindowCount() > 0) {
+                    @Override
+                    public void onPlayerError(PlaybackException error) {
+                        handlePlayerError(error);
+                    }
+
+                    @Override
+                    public void onIsPlayingChanged(boolean isPlaying) {
+                        if (isPlaying) {
+                            updateState(PlaybackState.PLAYING);
+                        }
+                    }
+
+                    @Override
+                    public void onTimelineChanged(Timeline timeline, int reason) {
+                        if (reason == Player.TIMELINE_CHANGE_REASON_SOURCE_UPDATE) {
+                            extractAndSendMetadata();
+                        }
+                    }
+
+                    @Override
+                    public void onMediaMetadataChanged(MediaMetadata metadata) {
                         extractAndSendMetadata();
                     }
-                }
-                
-                @Override
-                public void onMediaMetadataChanged(MediaMetadata metadata) {
-                    extractAndSendMetadata();
-                }
-            });
+                });
+
+                Log.i(TAG, "ExoPlayer initialized successfully");
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to initialize ExoPlayer", e);
+            }
         });
     }
 
     @ReactMethod
     public void destroy(Promise promise) {
         try {
-            cleanup();
+            cleanupAll();
             isInitialized = false;
             promise.resolve(true);
         } catch (Exception e) {
@@ -359,10 +374,19 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                                             .build())
                                     .build();
                             
-                            HlsMediaSource hlsMediaSource = new HlsMediaSource.Factory(
+                            // Configure HLS media source for better segment handling
+                            HlsMediaSource.Factory hlsFactory = new HlsMediaSource.Factory(
                                     useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
                                             .setDefaultRequestProperties(headers)
-                            ).createMediaSource(mediaItem);
+                                            .setConnectTimeoutMs(30000)  // 30 second connect timeout
+                                            .setReadTimeoutMs(30000)      // 30 second read timeout
+                                            .setAllowCrossProtocolRedirects(true)
+                            );
+                            
+                            // Configure for continuous playback without gaps
+                            hlsFactory.setAllowChunklessPreparation(true);
+                            
+                            HlsMediaSource hlsMediaSource = hlsFactory.createMediaSource(mediaItem);
                             
                             player.setMediaSource(hlsMediaSource);
                         } else if (isDASH) {
@@ -411,13 +435,14 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         }
                     }
                     
+                    // Set autoPlay before prepare to fix initial playback issue
+                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
+                        player.setPlayWhenReady(true);
+                    }
+                    
                     player.prepare();
                     updateState(PlaybackState.LOADING);
                     sendEvent("onStreamStart", Arguments.createMap());
-                    
-                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
-                        player.play();
-                    }
                     
                     startProgressTimer();
                     startStatsTimer();
@@ -438,7 +463,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void stopStream(Promise promise) {
         try {
-            cleanup();
+            cleanupAll();
             updateState(PlaybackState.IDLE); // Change to IDLE instead of STOPPED
             promise.resolve(true);
         } catch (Exception e) {
@@ -1173,7 +1198,184 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
         promise.reject("UNSUPPORTED", "Route picker view is not available on Android", (Throwable) null);
     }
 
+    // Real-time streaming components
+    @ReactMethod
+    public void startRealtimeStream(ReadableMap config, Promise promise) {
+        try {
+            Log.i(TAG, "Starting real-time streaming");
+            
+            if (!isInitialized) {
+                promise.reject("NOT_INITIALIZED", "AudioStream is not initialized", (Throwable) null);
+                return;
+            }
+            
+            mainHandler.post(() -> {
+                try {
+                    // Initialize player if needed
+                    if (player == null) {
+                        initializePlayer();
+                    }
+                    
+                    // Stop any current playback
+                    if (player.isPlaying()) {
+                        player.stop();
+                    }
+                    player.clearMediaItems();
+                    
+                    // Create streaming data source
+                    streamingDataSource = new RealtimeStreamingDataSource();
+                    
+                    // Create a dummy URI for the stream
+                    Uri streamUri = Uri.parse("streaming://realtime");
+                    
+                    // Create media item
+                    MediaItem mediaItem = new MediaItem.Builder()
+                            .setUri(streamUri)
+                            .build();
+                    
+                    // Create progressive media source with our custom data source
+                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                            new RealtimeStreamingDataSource.Factory(streamingDataSource)
+                    ).createMediaSource(mediaItem);
+                    
+                    // Set media source and prepare
+                    player.setMediaSource(mediaSource);
+                    player.prepare();
+                    
+                    isStreamingActive = true;
+                    updateState(PlaybackState.LOADING);
+                    sendEvent("onStreamStart", Arguments.createMap());
+                    
+                    // Auto play if configured
+                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
+                        player.setPlayWhenReady(true);
+                    }
+                    
+                    startProgressTimer();
+                    startStatsTimer();
+                    
+                    promise.resolve(true);
+                    
+                    Log.i(TAG, "Real-time streaming initialized successfully");
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to start real-time streaming", e);
+                    promise.reject("STREAM_ERROR", "Failed to start real-time streaming", e);
+                }
+            });
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start real-time streaming", e);
+            promise.reject("STREAM_ERROR", "Failed to start real-time streaming", e);
+        }
+    }
+
+    @ReactMethod
+    public void appendRealtimeData(String base64Data, Promise promise) {
+        try {
+            if (!isStreamingActive || streamingDataSource == null) {
+                promise.reject("NOT_STREAMING", "Real-time streaming is not active", (Throwable) null);
+                return;
+            }
+            
+            if (base64Data == null || base64Data.isEmpty()) {
+                promise.reject("INVALID_DATA", "No data provided", (Throwable) null);
+                return;
+            }
+            
+            // Decode base64 to byte array
+            byte[] audioData = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+            if (audioData == null || audioData.length == 0) {
+                promise.reject("DECODE_ERROR", "Failed to decode base64 data", (Throwable) null);
+                return;
+            }
+            
+            Log.d(TAG, "Appending real-time data: " + audioData.length + " bytes");
+            
+            // Append data on background thread
+            new Thread(() -> {
+                try {
+                    streamingDataSource.appendChunk(audioData);
+                    promise.resolve(true);
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to append real-time data", e);
+                    promise.reject("APPEND_ERROR", "Failed to append real-time data", e);
+                }
+            }).start();
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to append real-time data", e);
+            promise.reject("APPEND_ERROR", "Failed to append real-time data", e);
+        }
+    }
+
+    @ReactMethod
+    public void completeRealtimeStream(Promise promise) {
+        try {
+            if (!isStreamingActive || streamingDataSource == null) {
+                promise.reject("NOT_STREAMING", "Real-time streaming is not active", (Throwable) null);
+                return;
+            }
+            
+            Log.i(TAG, "Completing real-time stream");
+            
+            streamingDataSource.completeStream();
+            isStreamingActive = false;
+            
+            promise.resolve(true);
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to complete real-time stream", e);
+            promise.reject("COMPLETE_ERROR", "Failed to complete real-time stream", e);
+        }
+    }
+
+    @ReactMethod
+    public void getStreamingStats(Promise promise) {
+        try {
+            WritableMap stats = Arguments.createMap();
+            
+            if (streamingDataSource != null) {
+                stats.putDouble("bytesWritten", streamingDataSource.getTotalBytesWritten());
+                stats.putDouble("bytesRead", streamingDataSource.getTotalBytesRead());
+                stats.putBoolean("isActive", isStreamingActive);
+                stats.putBoolean("isReady", streamingDataSource.isReady());
+            } else {
+                stats.putDouble("bytesWritten", 0);
+                stats.putDouble("bytesRead", 0);
+                stats.putBoolean("isActive", false);
+                stats.putBoolean("isReady", false);
+            }
+            
+            promise.resolve(stats);
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get streaming stats", e);
+            promise.reject("STATS_ERROR", "Failed to get streaming stats", e);
+        }
+    }
+
     // Helper methods
+
+    private void cleanupAll() {
+        cleanup();
+        cleanupStreaming();
+        
+        // Clean up streaming file if exists
+        if (streamingFile != null) {
+            streamingFile.delete();
+            streamingFile = null;
+        }
+        
+        if (streamingOutputStream != null) {
+            try {
+                streamingOutputStream.close();
+            } catch (IOException e) {
+                Log.e(TAG, "Error closing streaming output stream", e);
+            }
+            streamingOutputStream = null;
+        }
+    }
 
     private void cleanup() {
         if (progressTimer != null) {
@@ -1461,5 +1663,13 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
             }
         }
         fileOrDirectory.delete();
+    }
+
+    private void cleanupStreaming() {
+        if (streamingDataSource != null) {
+            streamingDataSource.completeStream();
+            streamingDataSource = null;
+        }
+        isStreamingActive = false;
     }
 } 
