@@ -1234,10 +1234,12 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                             .setUri(streamUri)
                             .build();
                     
-                    // Create progressive media source with our custom data source
-                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
-                            new RealtimeStreamingDataSource.Factory(streamingDataSource)
-                    ).createMediaSource(mediaItem);
+                    // Create a DataSource.Factory that returns our streaming data source
+                    DataSource.Factory dataSourceFactory = () -> streamingDataSource;
+                    
+                    // Create progressive media source with our custom data source factory
+                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
+                            .createMediaSource(mediaItem);
                     
                     // Set media source and prepare
                     player.setMediaSource(mediaSource);

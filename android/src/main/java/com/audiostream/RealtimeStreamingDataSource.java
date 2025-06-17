@@ -5,11 +5,12 @@ import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
-import androidx.media3.common.PlaybackException;
+import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.BaseDataSource;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DataSpec;
 import androidx.media3.datasource.DataSourceException;
+import androidx.media3.datasource.TransferListener;
 
 import java.io.IOException;
 import java.io.PipedInputStream;
@@ -20,6 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Custom DataSource for real-time byte-by-byte streaming with AndroidX Media3
  * This allows feeding audio data chunk by chunk as it arrives
  */
+@UnstableApi
 public class RealtimeStreamingDataSource extends BaseDataSource {
     private static final String TAG = "RealtimeStreamingDS";
     private static final int PIPE_SIZE = 1024 * 128; // 128KB pipe buffer
@@ -32,6 +34,9 @@ public class RealtimeStreamingDataSource extends BaseDataSource {
     private long totalBytesWritten = 0;
     private long totalBytesRead = 0;
     
+    /**
+     * Factory for creating RealtimeStreamingDataSource instances
+     */
     public static class Factory implements DataSource.Factory {
         private final RealtimeStreamingDataSource dataSource;
         
@@ -104,10 +109,10 @@ public class RealtimeStreamingDataSource extends BaseDataSource {
                 // Normal end of stream
                 return C.RESULT_END_OF_INPUT;
             }
-            // Fixed for Media3: DataSourceException constructor with proper error code
+            // Fixed: Use DataSourceException error code directly
             throw new DataSourceException(
                 e,
-                PlaybackException.ERROR_CODE_IO_OTHER
+                DataSourceException.ERROR_IO_OTHER
             );
         }
         
