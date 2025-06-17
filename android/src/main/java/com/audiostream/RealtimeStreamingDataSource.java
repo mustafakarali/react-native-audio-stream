@@ -199,4 +199,18 @@ public class RealtimeStreamingDataSource extends BaseDataSource {
     public boolean isReady() {
         return isOpen.get() && (totalBytesWritten > totalBytesRead || isComplete.get());
     }
+    
+    /**
+     * Get total bytes written to the stream
+     */
+    public long getTotalBytesWritten() {
+        return totalBytesWritten;
+    }
+    
+    /**
+     * Get total bytes read from the stream
+     */
+    public long getTotalBytesRead() {
+        return totalBytesRead;
+    }
 } 

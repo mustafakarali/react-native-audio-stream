@@ -1298,7 +1298,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
             // Append data on background thread
             new Thread(() -> {
                 try {
-                    streamingDataSource.appendChunk(audioData);
+                    streamingDataSource.appendData(audioData);
                     promise.resolve(true);
                 } catch (IOException e) {
                     Log.e(TAG, "Failed to append real-time data", e);
@@ -1322,7 +1322,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
             
             Log.i(TAG, "Completing real-time stream");
             
-            streamingDataSource.completeStream();
+            streamingDataSource.complete();
             isStreamingActive = false;
             
             promise.resolve(true);
@@ -1670,7 +1670,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
 
     private void cleanupStreaming() {
         if (streamingDataSource != null) {
-            streamingDataSource.completeStream();
+            streamingDataSource.complete();
             streamingDataSource = null;
         }
         isStreamingActive = false;
