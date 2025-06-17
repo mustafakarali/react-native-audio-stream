@@ -66,6 +66,9 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.trackselection.TrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.extractor.mp3.Mp3Extractor;
+import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.extractor.ExtractorsFactory;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -1001,12 +1004,24 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
 
             mainHandler.post(() -> {
                 try {
+                    // Initialize player if needed
+                    if (player == null) {
+                        initializePlayer();
+                    }
+                    
+                    // Stop any current playback
+                    if (player.isPlaying()) {
+                        player.stop();
+                    }
+                    player.clearMediaItems();
+                    
                     // Create ByteArrayDataSource
                     ByteArrayDataSource dataSource = new ByteArrayDataSource(audioData);
                     
                     // Create media item
                     MediaItem mediaItem = new MediaItem.Builder()
-                            .setUri(Uri.parse("data:audio/mp3;base64," + base64Data.substring(0, 50)))
+                            .setUri(Uri.parse("data:audio/mp3"))
+                            .setMimeType("audio/mpeg")
                             .build();
                     
                     // Create media source
@@ -1025,8 +1040,14 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     updateState(PlaybackState.LOADING);
                     sendEvent("onStreamStart", Arguments.createMap());
                     
-                    if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
-                        player.play();
+                    // Auto play handling
+                    boolean shouldAutoPlay = true;
+                    if (config != null && config.hasKey("autoPlay")) {
+                        shouldAutoPlay = config.getBoolean("autoPlay");
+                    }
+                    
+                    if (shouldAutoPlay) {
+                        player.setPlayWhenReady(true);
                     }
                     
                     startProgressTimer();
@@ -1035,7 +1056,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     promise.resolve(true);
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to play audio data", e);
-                    promise.reject("PLAYBACK_ERROR", "Failed to play audio data", e);
+                    promise.reject("PLAYBACK_ERROR", e.getMessage() != null ? e.getMessage() : "Failed to play audio data", e);
                 }
             });
         } catch (Exception e) {
@@ -1097,7 +1118,13 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     
                     // Check buffer level and start playback if ready
                     if (player != null && !isPlaying && streamingFile.length() >= prebufferThreshold) {
-                        if (config != null && config.hasKey("autoPlay") && config.getBoolean("autoPlay")) {
+                        // Default to autoPlay true if config is not provided
+                        boolean shouldAutoPlay = true;
+                        if (config != null && config.hasKey("autoPlay")) {
+                            shouldAutoPlay = config.getBoolean("autoPlay");
+                        }
+                        
+                        if (shouldAutoPlay) {
                             player.play();
                             isPlaying = true;
                         }
@@ -1232,13 +1259,20 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     // Create media item
                     MediaItem mediaItem = new MediaItem.Builder()
                             .setUri(streamUri)
+                            .setMimeType("audio/mpeg") // MP3 için MIME type
                             .build();
                     
                     // Create a DataSource.Factory that returns our streaming data source
                     DataSource.Factory dataSourceFactory = () -> streamingDataSource;
                     
+                    // Create ExtractorsFactory that includes MP3 extractor
+                    ExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
+                            .setConstantBitrateSeekingEnabled(true);
+                    
                     // Create progressive media source with our custom data source factory
-                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
+                    ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(
+                            dataSourceFactory,
+                            extractorsFactory)
                             .createMediaSource(mediaItem);
                     
                     // Set media source and prepare
@@ -1263,13 +1297,13 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to start real-time streaming", e);
-                    promise.reject("STREAM_ERROR", "Failed to start real-time streaming", e);
+                    promise.reject("STREAM_ERROR", e.getMessage() != null ? e.getMessage() : "Failed to start real-time streaming", e);
                 }
             });
             
         } catch (Exception e) {
             Log.e(TAG, "Failed to start real-time streaming", e);
-            promise.reject("STREAM_ERROR", "Failed to start real-time streaming", e);
+            promise.reject("STREAM_ERROR", e.getMessage() != null ? e.getMessage() : "Failed to start real-time streaming", e);
         }
     }
 
