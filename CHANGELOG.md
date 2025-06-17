@@ -29,41 +29,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fixed Android build error: changed `MimeTypes.APPLICATION_SMIL` to `MimeTypes.APPLICATION_SS` for SmoothStreaming support in Media3
 
-## [1.10.9] - 2024-12-29
+## [1.10.9] - 2024-03-19
 
-### Android Implementation Review
+### Fixed
+- **Event Handling**: Improved Media3 event handling for stream completion
+  - Added `onPlayWhenReadyChanged` listener to detect natural end of media
+  - Enhanced `handlePlaybackStateChange` with better logging
+  - Fixed `onStreamEnd` event not being triggered consistently
+  - Added detailed logging for debugging stream completion
 
-#### ✅ Confirmed Working Features:
-- **Media3 Migration**: Successfully migrated from ExoPlayer2 to AndroidX Media3
-- **Stream Types Supported**:
-  - HLS (.m3u8) - Uses HlsMediaSource
-  - DASH (.mpd) - Uses DashMediaSource
-  - SmoothStreaming (.ism, .ism/Manifest) - Uses SsMediaSource
-  - Progressive (MP3, AAC, WAV, OGG, FLAC) - Uses ProgressiveMediaSource
-  - Local files (file:// or absolute paths)
-  - Base64 audio data via playFromData()
-  - Streaming chunks via appendToBuffer()
-  
-#### ✅ Working Features:
-- Audio focus management (Android 8.0+ API)
-- Caching with SimpleCache and LRU eviction
-- Custom headers support
-- Background playback
-- Buffering control and statistics
-- Bandwidth monitoring
-- Comprehensive error handling
-- All playback controls (play, pause, stop, seek)
-- Volume and playback rate control
-- Progress and metadata extraction
-
-#### ⚠️ Limitations:
-- POST requests with body not fully supported (use playFromData() for TTS)
-- Equalizer returns mock data (would need AudioEffect API integration)
-- RTSP not implemented (but can be added easily)
-
-#### 📝 No Code Changes:
-This version documents the current Android implementation status after thorough review.
-All features listed above are already implemented and working.
+### Changed
+- **Media3 Integration**: Updated Media3 event system implementation
+  - Removed deprecated ExoPlayer2 references
+  - Optimized event listener registration
+  - Improved cleanup handling
 
 ## [1.10.8] - 2024-12-29
 

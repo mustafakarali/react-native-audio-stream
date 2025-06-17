@@ -249,10 +249,6 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         .setSeekForwardIncrementMs(10000)
                         .build();
 
-                // Optimize for streaming
-                // FIXME: SeekParameters API has changed in Media3
-                // player.setSeekParameters(SeekParameters.CLOSEST_SYNC);
-                
                 // Handle playback events
                 player.addListener(new Player.Listener() {
                     @Override
@@ -282,6 +278,16 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     @Override
                     public void onMediaMetadataChanged(MediaMetadata metadata) {
                         extractAndSendMetadata();
+                    }
+
+                    @Override
+                    public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+                        if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) {
+                            Log.i(TAG, "Media item ended naturally");
+                            updateState(PlaybackState.COMPLETED);
+                            sendEvent("onStreamEnd", Arguments.createMap());
+                            cleanup();
+                        }
                     }
                 });
 
@@ -1464,6 +1470,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                 }
                 break;
             case Player.STATE_ENDED:
+                Log.i(TAG, "Player state changed to ENDED");
                 updateState(PlaybackState.COMPLETED);
                 sendEvent("onStreamEnd", Arguments.createMap());
                 cleanup();
