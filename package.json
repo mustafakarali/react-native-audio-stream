@@ -1,7 +1,7 @@
 {
   "name": "@mustafakarali/react-native-audio-stream",
-  "version": "1.10.9",
-  "description": "A comprehensive React Native audio streaming library with real-time playback support",
+  "version": "1.10.10",
+  "description": "React Native Audio Stream - High-performance audio streaming for React Native",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
   "types": "lib/typescript/index.d.ts",

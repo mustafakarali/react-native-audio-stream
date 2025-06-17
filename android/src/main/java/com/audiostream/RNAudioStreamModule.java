@@ -380,7 +380,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         } else if (isSmoothStreaming) {
                             mediaItem = new MediaItem.Builder()
                                     .setUri(url)
-                                    .setMimeType(MimeTypes.APPLICATION_SMIL)
+                                    .setMimeType(MimeTypes.APPLICATION_SS)
                                     .build();
                             
                             SsMediaSource ssMediaSource = new SsMediaSource.Factory(
