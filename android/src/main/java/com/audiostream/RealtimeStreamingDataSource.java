@@ -5,7 +5,9 @@ import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.datasource.BaseDataSource;
+import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DataSpec;
 import androidx.media3.datasource.DataSourceException;
 
@@ -38,13 +40,13 @@ public class RealtimeStreamingDataSource extends BaseDataSource {
         }
         
         @Override
-        public RealtimeStreamingDataSource createDataSource() {
+        public DataSource createDataSource() {
             return dataSource;
         }
     }
 
     public RealtimeStreamingDataSource() {
-        super(true); // isNetwork = true for streaming behavior
+        super(/* isNetwork= */ true);
     }
 
     @Override
@@ -102,7 +104,11 @@ public class RealtimeStreamingDataSource extends BaseDataSource {
                 // Normal end of stream
                 return C.RESULT_END_OF_INPUT;
             }
-            throw new DataSourceException(e);
+            // Fixed for Media3: DataSourceException constructor with proper error code
+            throw new DataSourceException(
+                e,
+                PlaybackException.ERROR_CODE_IO_OTHER
+            );
         }
         
         return bytesRead;

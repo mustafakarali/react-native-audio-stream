@@ -1,6 +1,6 @@
 {
   "name": "@mustafakarali/react-native-audio-stream",
-  "version": "1.10.11",
+  "version": "1.10.12",
   "description": "React Native Audio Stream - High-performance audio streaming for React Native",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",

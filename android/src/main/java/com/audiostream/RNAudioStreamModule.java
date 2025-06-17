@@ -65,7 +65,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.trackselection.TrackSelector;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
-import androidx.media3.exoplayer.util.SeekParameters;
+import androidx.media3.common.TrackSelectionParameters;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -247,7 +247,8 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                         .build();
 
                 // Optimize for streaming
-                player.setSeekParameters(SeekParameters.CLOSEST_SYNC);
+                // FIXME: SeekParameters API has changed in Media3
+                // player.setSeekParameters(SeekParameters.CLOSEST_SYNC);
                 
                 // Handle playback events
                 player.addListener(new Player.Listener() {
