@@ -56,6 +56,7 @@ import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.dash.DashMediaSource;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.smoothstreaming.SsMediaSource;
+import androidx.media3.exoplayer.rtsp.RtspMediaSource;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.MergingMediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
@@ -301,6 +302,7 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                     // Determine if it's HLS/DASH
                     boolean isHLS = url.endsWith(".m3u8") || url.contains("playlist.m3u8");
                     boolean isDASH = url.endsWith(".mpd");
+                    boolean isSmoothStreaming = url.endsWith(".ism") || url.endsWith(".ism/Manifest");
                     boolean isHTTP = url.startsWith("http://") || url.startsWith("https://");
                     
                     // Determine HTTP method
@@ -375,6 +377,18 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
                             ).createMediaSource(mediaItem);
                             
                             player.setMediaSource(dashMediaSource);
+                        } else if (isSmoothStreaming) {
+                            mediaItem = new MediaItem.Builder()
+                                    .setUri(url)
+                                    .setMimeType(MimeTypes.APPLICATION_SMIL)
+                                    .build();
+                            
+                            SsMediaSource ssMediaSource = new SsMediaSource.Factory(
+                                    useCache ? dataSourceFactory : new DefaultHttpDataSource.Factory()
+                                            .setDefaultRequestProperties(headers)
+                            ).createMediaSource(mediaItem);
+                            
+                            player.setMediaSource(ssMediaSource);
                         } else {
                             // Regular HTTP/HTTPS stream
                             mediaItem = new MediaItem.Builder()
