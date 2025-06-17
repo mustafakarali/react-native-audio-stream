@@ -35,7 +35,7 @@ import androidx.media3.common.Player;
 import androidx.media3.common.Timeline;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.Util;
-import androidx.media3.common.AudioAttributes;
+
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.LoadControl;
@@ -62,6 +62,7 @@ import androidx.media3.common.Metadata;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import android.util.Base64;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -71,7 +72,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.Base64;
 
 import javax.annotation.Nullable;
 
@@ -131,7 +131,6 @@ public class RNAudioStreamModule extends ReactContextBaseJavaModule {
     private long prebufferThreshold = 16 * 1024; // 16KB default
     
     // Memory streaming support - DISABLED FOR NOW
-    // private MemoryDataSource memoryDataSource = null;
     // private boolean isMemoryStreaming = false;
 
     public RNAudioStreamModule(ReactApplicationContext reactContext) {

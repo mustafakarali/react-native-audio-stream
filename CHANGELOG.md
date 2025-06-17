@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.5] - 2024-12-29
+
+### Fixed
+- **Critical Android Build Fix**: Removed phantom MemoryDataSource import that wasn't in source but appeared in npm package
+- Fixed Base64 import: removed java.util.Base64 (requires API 26+) in favor of android.util.Base64
+- Removed conflicting androidx.media3.common.AudioAttributes import
+- Cleaned up all remaining ExoPlayer2 references
+- Ensured clean build before npm publish
+
+### Technical Details
+- Fixed inconsistency between local source and npm published package
+- Proper Base64 support for API 23+ devices
+- AudioAttributes now properly uses android.media version for audio focus
+- Complete Media3 migration is fully functional
+
 ## [1.10.4] - 2024-12-29
 
 ### Changed
