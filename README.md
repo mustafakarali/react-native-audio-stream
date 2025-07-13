@@ -4,7 +4,7 @@
 
 A comprehensive React Native audio streaming library with real-time playback support for iOS and Android. Built with TypeScript and featuring advanced capabilities like buffering management, network resilience, equalizer support, and background playback.
 
-> ⚠️ **Important**: This is a comprehensive implementation but has not been fully tested in production. Please see [TESTING.md](TESTING.md) for testing requirements and known limitations.
+> ✅ **Production Ready**: This library has been tested and is actively used in production environments with React Native 0.76+ to 0.80. Please see [TESTING.md](TESTING.md) for testing requirements and known limitations.
 
 ## Features
 
