@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "commonjs",
-    "lib": ["ES2020"],
+    "lib": ["ES2022"],
     "declaration": true,
     "declarationMap": true,
     "outDir": "./lib",
     "rootDir": "./src",
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -15,8 +17,8 @@
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
     "jsx": "react-native",
-    "types": ["react", "react-native", "jest"]
+    "types": ["react", "jest"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "lib", "example"]
-} 
+  "exclude": ["node_modules", "lib", "example", "plugin", "src/__tests__"]
+}

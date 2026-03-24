@@ -1,4 +1,5 @@
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
+
 import {
   IAudioStream,
   AudioStreamConfig,
@@ -13,6 +14,20 @@ import {
   EQUALIZER_PRESETS,
   ErrorCodes,
   AudioDeviceInfo,
+  WebSocketStreamConfig,
+  PlaylistItem,
+  PlaylistState,
+  RepeatMode,
+  DvrWindow,
+  LiveStreamState,
+  RecordingConfig,
+  RecordingState,
+  AudioProcessingConfig,
+  VADConfig,
+  PublishConfig,
+  PublishingStats,
+  MediaSessionConfig,
+  MediaBrowseItem,
 } from './types';
 import { logger } from './logger';
 
@@ -70,6 +85,23 @@ export class AudioStream implements IAudioStream {
         isConnected: data.isConnected,
         type: data.type || undefined,
       })],
+      ['onTrackChange', 'onTrackChange', (data) => data as PlaylistState],
+      ['onQueueUpdate', 'onQueueUpdate', (data) => data as PlaylistState],
+      // DRM events
+      ['onLicenseAcquired', 'onLicenseAcquired', () => undefined],
+      ['onLicenseError', 'onLicenseError', (data) => ({
+        code: data.code || 'DRM_ERROR',
+        message: data.message || 'License error',
+        details: data.details,
+        recoverable: data.recoverable ?? false,
+      })],
+      ['onKeyExpired', 'onKeyExpired', () => undefined],
+      // VAD events
+      ['onVoiceActivity', 'onVoiceActivity', (data) => data.isActive],
+      ['onSilenceDetected', 'onSilenceDetected', () => undefined],
+      // Recording events
+      ['onAudioData', 'onAudioData', (data) => ({ data: data.data, bytesRead: data.bytesRead })],
+      ['onRecordingLevel', 'onRecordingLevel', (data) => data.level],
     ];
 
     eventMappings.forEach(([nativeEvent, callbackKey, transformer]) => {
@@ -160,7 +192,9 @@ export class AudioStream implements IAudioStream {
       logger.info('Stopping stream');
       await RNAudioStream.stopStream();
       this.currentUrl = null;
-      this.removeAllEventListeners();
+      // Note: we intentionally do NOT remove user event listeners here.
+      // Users may want to re-use their listeners for the next stream.
+      // They can call removeAllEventListeners() explicitly if needed.
     } catch (error) {
       logger.error('Failed to stop stream:', error);
       throw error;
@@ -292,6 +326,71 @@ export class AudioStream implements IAudioStream {
     }
   }
 
+  async mute(): Promise<void> {
+    this.ensureInitialized();
+    
+    try {
+      logger.debug('Muting');
+      await RNAudioStream.mute();
+      logger.logPlaybackEvent('mute');
+    } catch (error) {
+      logger.error('Failed to mute:', error);
+      throw error;
+    }
+  }
+
+  async unmute(): Promise<void> {
+    this.ensureInitialized();
+    
+    try {
+      logger.debug('Unmuting');
+      await RNAudioStream.unmute();
+      logger.logPlaybackEvent('unmute');
+    } catch (error) {
+      logger.error('Failed to unmute:', error);
+      throw error;
+    }
+  }
+
+  async isMuted(): Promise<boolean> {
+    this.ensureInitialized();
+    
+    try {
+      return await RNAudioStream.isMuted();
+    } catch (error) {
+      logger.error('Failed to get mute state:', error);
+      throw error;
+    }
+  }
+
+  async setPitch(pitch: number): Promise<void> {
+    this.ensureInitialized();
+    
+    if (pitch < 0.5 || pitch > 2.0) {
+      throw new Error('Pitch must be between 0.5 and 2.0');
+    }
+    
+    try {
+      logger.debug(`Setting pitch to ${pitch}`);
+      await RNAudioStream.setPitch(pitch);
+      logger.logPlaybackEvent('pitchChange', { pitch });
+    } catch (error) {
+      logger.error('Failed to set pitch:', error);
+      throw error;
+    }
+  }
+
+  async getPitch(): Promise<number> {
+    this.ensureInitialized();
+    
+    try {
+      return await RNAudioStream.getPitch();
+    } catch (error) {
+      logger.error('Failed to get pitch:', error);
+      throw error;
+    }
+  }
+
   async getState(): Promise<PlaybackState> {
     this.ensureInitialized();
     
@@ -392,7 +491,7 @@ export class AudioStream implements IAudioStream {
         if (preset < 0 || preset >= EQUALIZER_PRESETS.length) {
           throw new Error(`Invalid preset index: ${preset}. Must be between 0 and ${EQUALIZER_PRESETS.length - 1}`);
         }
-        equalizerPreset = EQUALIZER_PRESETS[preset];
+        equalizerPreset = EQUALIZER_PRESETS[preset]!;
         logger.info(`Applying equalizer preset by index: ${preset} (${equalizerPreset.name})`);
       } else {
         // If preset is an object
@@ -621,9 +720,8 @@ export class AudioStream implements IAudioStream {
       logger.debug('Data size:', base64Data.length, 'characters');
       
       await RNAudioStream.playFromData(base64Data, mergedConfig);
-      
-      // Set up event listeners
-      this.setupNativeEventListeners();
+      // Native event listeners are already set up in constructor —
+      // do NOT call setupNativeEventListeners() again (causes listener leak).
     } catch (error) {
       logger.error('Failed to play from data:', error);
       throw error;
@@ -642,22 +740,17 @@ export class AudioStream implements IAudioStream {
     }
   }
 
-  // Real-time streaming methods (Android only)
+  // Real-time streaming methods (both platforms)
   async startRealtimeStream(config?: AudioStreamConfig): Promise<void> {
     this.ensureInitialized();
-    
-    if (Platform.OS !== 'android') {
-      throw new Error('Real-time streaming is only available on Android');
-    }
     
     try {
       const mergedConfig = { ...this.config, ...config };
       logger.info('Starting real-time stream');
       
       await RNAudioStream.startRealtimeStream(mergedConfig);
-      
-      // Set up event listeners
-      this.setupNativeEventListeners();
+      // Native event listeners are already set up in constructor —
+      // do NOT call setupNativeEventListeners() again (causes listener leak).
     } catch (error) {
       logger.error('Failed to start real-time stream:', error);
       throw error;
@@ -666,10 +759,6 @@ export class AudioStream implements IAudioStream {
 
   async appendRealtimeData(base64Data: string): Promise<void> {
     this.ensureInitialized();
-    
-    if (Platform.OS !== 'android') {
-      throw new Error('Real-time streaming is only available on Android');
-    }
     
     try {
       logger.debug('Appending real-time data, size:', base64Data.length, 'characters');
@@ -682,10 +771,6 @@ export class AudioStream implements IAudioStream {
 
   async completeRealtimeStream(): Promise<void> {
     this.ensureInitialized();
-    
-    if (Platform.OS !== 'android') {
-      throw new Error('Real-time streaming is only available on Android');
-    }
     
     try {
       logger.info('Completing real-time stream');
@@ -704,10 +789,6 @@ export class AudioStream implements IAudioStream {
   }> {
     this.ensureInitialized();
     
-    if (Platform.OS !== 'android') {
-      throw new Error('Real-time streaming is only available on Android');
-    }
-    
     try {
       return await RNAudioStream.getStreamingStats();
     } catch (error) {
@@ -718,7 +799,9 @@ export class AudioStream implements IAudioStream {
 
   private ensureInitialized(): void {
     if (!this.isInitialized) {
-      throw new Error('AudioStream is not initialized. Call initialize() first.');
+      const err = new Error('AudioStream is not initialized. Call initialize() first.') as Error & { code: string };
+      err.code = ErrorCodes.INITIALIZATION_ERROR;
+      throw err;
     }
   }
 
@@ -764,137 +847,436 @@ export class AudioStream implements IAudioStream {
     return RNAudioStream.completeMemoryStream();
   }
 
+  // ─── WebSocket Streaming ───
+
   /**
-   * Stream audio from URL with optimal settings
-   * Automatically handles Android/iOS differences
+   * Start a WebSocket audio stream.
+   * Connects to the WebSocket server and plays incoming binary audio data in real-time.
+   * Both iOS (NSURLSessionWebSocketTask) and Android (OkHttp WebSocket) are supported.
+   *
+   * @param config - WebSocket stream configuration
    */
-  static async streamFromURL(
-    url: string,
-    onChunk?: (chunk: Uint8Array) => void
-  ): Promise<void> {
-    const response = await fetch(url);
-    
-    // @ts-ignore - response.body exists in React Native runtime
-    if (!response.body) {
-      throw new Error('Response body is empty');
+  async startWebSocketStream(config: WebSocketStreamConfig): Promise<void> {
+    if (!this.isInitialized) {
+      throw this.createError(
+        ErrorCodes.INITIALIZATION_ERROR,
+        'AudioStream must be initialized before starting WebSocket stream'
+      );
     }
-    
-    // @ts-ignore - ReadableStream exists in React Native runtime
-    const reader = response.body.getReader();
-    
-    const instance = AudioStream.getInstance();
-    await instance.initialize();
-    
-    if (Platform.OS === 'android') {
-      // Android: Use memory streaming for better performance
-      await this.startMemoryStream({ autoPlay: true });
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        if (onChunk) onChunk(value);
-        
-        // Convert to base64
-        // @ts-ignore - btoa exists in React Native runtime
-        const base64 = btoa(String.fromCharCode(...value));
-        await this.appendToMemoryStream(base64);
-      }
-      
-      await this.completeMemoryStream();
-    } else {
-      // iOS: Use appendToBuffer
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        if (onChunk) onChunk(value);
-        
-        // Convert to base64
-        // @ts-ignore - btoa exists in React Native runtime
-        const base64 = btoa(String.fromCharCode(...value));
-        await instance.appendToBuffer(base64);
-      }
+
+    if (!config.url) {
+      throw this.createError(ErrorCodes.INVALID_URL, 'WebSocket URL is required');
+    }
+
+    const wsConfig = {
+      url: config.url,
+      protocols: config.protocols || [],
+      headers: config.headers || {},
+      audioFormat: config.audioFormat || 'pcm',
+      sampleRate: config.sampleRate || 44100,
+      channels: config.channels || 1,
+      autoPlay: config.autoPlay !== false,
+      autoReconnect: config.autoReconnect !== false,
+      reconnectAttempts: config.reconnectAttempts || this.config.reconnectAttempts || 3,
+      reconnectDelay: config.reconnectDelay || this.config.reconnectDelay || 1000,
+    };
+
+    logger.info('Starting WebSocket stream:', wsConfig.url);
+    await RNAudioStream.startWebSocketStream(wsConfig);
+  }
+
+  /**
+   * Stop the active WebSocket audio stream.
+   * Closes the WebSocket connection and stops audio playback.
+   */
+  async stopWebSocketStream(): Promise<void> {
+    logger.info('Stopping WebSocket stream');
+    await RNAudioStream.stopWebSocketStream();
+  }
+
+  /**
+   * Send a message to the WebSocket server.
+   * Useful for bi-directional communication (e.g., VoIP signaling, control messages).
+   *
+   * @param data - String data to send
+   */
+  async sendWebSocketMessage(data: string): Promise<void> {
+    await RNAudioStream.sendWebSocketMessage(data);
+  }
+
+  // ─── Playlist & Queue Management ───
+
+  /**
+   * Set the playlist with an array of tracks.
+   * Replaces the current queue and starts playing from index 0.
+   */
+  async setPlaylist(items: PlaylistItem[]): Promise<void> {
+    this.ensureInitialized();
+    if (!items || items.length === 0) {
+      throw this.createError(ErrorCodes.INVALID_STATE, 'Playlist must contain at least one item');
+    }
+    // Generate IDs for items that don't have one
+    const itemsWithIds = items.map((item, i) => ({
+      ...item,
+      id: item.id || `track-${Date.now()}-${i}`,
+    }));
+    logger.info(`Setting playlist with ${itemsWithIds.length} items`);
+    await RNAudioStream.setPlaylist(itemsWithIds);
+  }
+
+  /**
+   * Add a track to the queue at the specified position.
+   * @param item - Track to add
+   * @param position - Insert position (default: end of queue)
+   */
+  async addToQueue(item: PlaylistItem, position?: number): Promise<void> {
+    this.ensureInitialized();
+    const itemWithId = {
+      ...item,
+      id: item.id || `track-${Date.now()}`,
+    };
+    logger.info(`Adding to queue at position ${position ?? 'end'}:`, itemWithId.url);
+    await RNAudioStream.addToQueue(itemWithId, position ?? -1);
+  }
+
+  /**
+   * Remove a track from the queue by index.
+   */
+  async removeFromQueue(index: number): Promise<void> {
+    this.ensureInitialized();
+    logger.info(`Removing from queue at index ${index}`);
+    await RNAudioStream.removeFromQueue(index);
+  }
+
+  /**
+   * Move a track within the queue.
+   */
+  async moveInQueue(fromIndex: number, toIndex: number): Promise<void> {
+    this.ensureInitialized();
+    logger.info(`Moving in queue: ${fromIndex} → ${toIndex}`);
+    await RNAudioStream.moveInQueue(fromIndex, toIndex);
+  }
+
+  /**
+   * Skip to the next track in the queue.
+   */
+  async skipToNext(): Promise<void> {
+    this.ensureInitialized();
+    logger.info('Skipping to next track');
+    await RNAudioStream.skipToNext();
+  }
+
+  /**
+   * Skip to the previous track in the queue.
+   */
+  async skipToPrevious(): Promise<void> {
+    this.ensureInitialized();
+    logger.info('Skipping to previous track');
+    await RNAudioStream.skipToPrevious();
+  }
+
+  /**
+   * Skip to a specific track by index.
+   */
+  async skipToIndex(index: number): Promise<void> {
+    this.ensureInitialized();
+    logger.info(`Skipping to index ${index}`);
+    await RNAudioStream.skipToIndex(index);
+  }
+
+  /**
+   * Enable or disable shuffle mode.
+   */
+  async setShuffle(enabled: boolean): Promise<void> {
+    this.ensureInitialized();
+    logger.info(`Shuffle ${enabled ? 'enabled' : 'disabled'}`);
+    await RNAudioStream.setShuffle(enabled);
+  }
+
+  /**
+   * Set repeat mode: none, one (repeat current track), or all (repeat entire queue).
+   */
+  async setRepeat(mode: RepeatMode): Promise<void> {
+    this.ensureInitialized();
+    logger.info(`Repeat mode set to: ${mode}`);
+    await RNAudioStream.setRepeatMode(mode);
+  }
+
+  /**
+   * Get the current playlist state (current index, shuffle, repeat, track info).
+   */
+  async getPlaylistState(): Promise<PlaylistState> {
+    this.ensureInitialized();
+    return await RNAudioStream.getPlaylistState() as unknown as PlaylistState;
+  }
+
+  /**
+   * Get the full queue of tracks.
+   */
+  async getQueue(): Promise<PlaylistItem[]> {
+    this.ensureInitialized();
+    return await RNAudioStream.getQueue() as unknown as PlaylistItem[];
+  }
+
+  /**
+   * Clear the entire queue and stop playback.
+   */
+  async clearQueue(): Promise<void> {
+    this.ensureInitialized();
+    logger.info('Clearing queue');
+    await RNAudioStream.clearQueue();
+  }
+
+  // ─── Live Streaming Advanced ───
+
+  /**
+   * Seek to the live edge of the current live stream.
+   * Throws if the current stream is not a live stream.
+   */
+  async seekToLiveEdge(): Promise<void> {
+    this.ensureInitialized();
+    logger.info('Seeking to live edge');
+    await RNAudioStream.seekToLiveEdge();
+  }
+
+  /**
+   * Get the current offset from the live edge in seconds.
+   * Returns 0 if at the live edge, positive value if behind.
+   */
+  async getLiveEdgeOffset(): Promise<number> {
+    this.ensureInitialized();
+    return await RNAudioStream.getLiveEdgeOffset();
+  }
+
+  /**
+   * Get the DVR (seekable) window of the current live stream.
+   * Returns start, end, and duration in seconds.
+   */
+  async getDvrWindow(): Promise<DvrWindow> {
+    this.ensureInitialized();
+    return await RNAudioStream.getDvrWindow() as unknown as DvrWindow;
+  }
+
+  /**
+   * Set the target latency for LL-HLS/LL-DASH streams.
+   * @param latencyMs - Target latency in milliseconds
+   */
+  async setTargetLatency(latencyMs: number): Promise<void> {
+    this.ensureInitialized();
+    if (latencyMs < 0) {
+      throw new Error('Target latency must be non-negative');
+    }
+    logger.info(`Setting target latency to ${latencyMs}ms`);
+    await RNAudioStream.setTargetLatency(latencyMs);
+  }
+
+  /**
+   * Get the current live stream state including isLive, offset, DVR window size.
+   */
+  async getLiveStreamState(): Promise<LiveStreamState> {
+    this.ensureInitialized();
+    return await RNAudioStream.getLiveStreamState() as unknown as LiveStreamState;
+  }
+
+  // ─── Recording & Audio Capture ───
+
+  /**
+   * Start audio recording from microphone.
+   * @param config - Recording configuration (sampleRate, channels, format, source)
+   */
+  async startRecording(config?: RecordingConfig): Promise<void> {
+    this.ensureInitialized();
+
+    try {
+      const recordingConfig = config || {};
+      logger.info('Starting recording', recordingConfig);
+      await RNAudioStream.startRecording(recordingConfig);
+      logger.logPlaybackEvent('recordingStart', recordingConfig);
+    } catch (error) {
+      logger.error('Failed to start recording:', error);
+      throw error;
     }
   }
 
   /**
-   * Simple Text-to-Speech streaming with ElevenLabs
+   * Stop audio recording.
+   * @returns Path to the recorded audio file
    */
-  static async streamTTS(text: string, config: {
-    apiKey: string;
-    voiceId: string;
-    model?: string;
-    onProgress?: (status: string) => void;
-  }): Promise<void> {
-    const { apiKey, voiceId, model = 'eleven_multilingual_v2', onProgress } = config;
-    
-    onProgress?.('Connecting...');
-    
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
-      method: 'POST',
-      headers: {
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text,
-        model_id: model,
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.5,
-        },
-        optimize_streaming_latency: 4,
-      }),
-    });
+  async stopRecording(): Promise<string> {
+    this.ensureInitialized();
 
-    if (!response.ok) {
-      throw new Error(`TTS API error: ${response.status}`);
+    try {
+      logger.info('Stopping recording');
+      const filePath = await RNAudioStream.stopRecording();
+      logger.logPlaybackEvent('recordingStop', { filePath });
+      return filePath;
+    } catch (error) {
+      logger.error('Failed to stop recording:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the current audio input level (0.0 to 1.0).
+   */
+  async getRecordingLevel(): Promise<number> {
+    this.ensureInitialized();
+
+    try {
+      return await RNAudioStream.getRecordingLevel();
+    } catch (error) {
+      logger.error('Failed to get recording level:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the current recording state.
+   */
+  async getRecordingState(): Promise<RecordingState> {
+    this.ensureInitialized();
+
+    try {
+      return await RNAudioStream.getRecordingState() as RecordingState;
+    } catch (error) {
+      logger.error('Failed to get recording state:', error);
+      throw error;
+    }
+  }
+
+  // ─── Audio DSP ───
+
+  /**
+   * Enable/disable Acoustic Echo Cancellation.
+   * Android: AcousticEchoCanceler. iOS: voiceProcessingIO.
+   */
+  async enableAEC(enabled: boolean): Promise<void> {
+    this.ensureInitialized();
+    logger.info(`AEC ${enabled ? 'enabled' : 'disabled'}`);
+    await RNAudioStream.enableAEC(enabled);
+  }
+
+  /**
+   * Enable/disable Noise Suppression.
+   * Android: NoiseSuppressor. iOS: voiceProcessingIO.
+   */
+  async enableNoiseSuppression(enabled: boolean): Promise<void> {
+    this.ensureInitialized();
+    logger.info(`Noise suppression ${enabled ? 'enabled' : 'disabled'}`);
+    await RNAudioStream.enableNoiseSuppression(enabled);
+  }
+
+  /**
+   * Enable/disable Automatic Gain Control.
+   * Android: AutomaticGainControl. iOS: voiceProcessingIO.
+   */
+  async enableAGC(enabled: boolean): Promise<void> {
+    this.ensureInitialized();
+    logger.info(`AGC ${enabled ? 'enabled' : 'disabled'}`);
+    await RNAudioStream.enableAGC(enabled);
+  }
+
+  /**
+   * Enable Voice Activity Detection with optional configuration.
+   * Emits 'onVoiceActivity' and 'onSilenceDetected' events.
+   */
+  async enableVAD(config?: VADConfig): Promise<void> {
+    this.ensureInitialized();
+    logger.info('Enabling VAD', config);
+    await RNAudioStream.enableVAD(config || {});
+  }
+
+  /**
+   * Disable Voice Activity Detection.
+   */
+  async disableVAD(): Promise<void> {
+    this.ensureInitialized();
+    logger.info('Disabling VAD');
+    await RNAudioStream.disableVAD();
+  }
+
+  /**
+   * Set all audio processing options at once.
+   */
+  async setAudioProcessing(config: AudioProcessingConfig): Promise<void> {
+    this.ensureInitialized();
+    logger.info('Setting audio processing', config);
+    await RNAudioStream.setAudioProcessing(config);
+  }
+
+  // ─── Audio Encoding & Publishing ───
+
+  /**
+   * Start publishing audio to a server.
+   * Supports RTMP, SRT, WebRTC, and HTTP protocols.
+   * @param config - Publishing configuration (url, protocol, encoder settings)
+   */
+  async startPublishing(config: PublishConfig): Promise<void> {
+    this.ensureInitialized();
+
+    if (!config.url) {
+      throw new Error('Publishing URL is required');
+    }
+    if (!config.protocol) {
+      throw new Error('Publishing protocol is required');
     }
 
-    onProgress?.('Streaming...');
-    
-    // @ts-ignore - response.body exists in React Native runtime
-    if (!response.body) {
-      throw new Error('Response body is empty');
+    try {
+      logger.info(`Starting publishing to ${config.url} via ${config.protocol}`);
+      await RNAudioStream.startPublishing(config);
+      logger.logPlaybackEvent('publishingStart', { url: config.url, protocol: config.protocol });
+    } catch (error) {
+      logger.error('Failed to start publishing:', error);
+      throw error;
     }
-    
-    // @ts-ignore - ReadableStream exists in React Native runtime
-    const reader = response.body.getReader();
-    
-    const instance = AudioStream.getInstance();
-    await instance.initialize();
-    
-    if (Platform.OS === 'android') {
-      await this.startMemoryStream({ autoPlay: true });
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        onProgress?.(`Received ${value.length} bytes`);
-        
-        // Convert to base64
-        // @ts-ignore - btoa exists in React Native runtime
-        const base64 = btoa(String.fromCharCode(...value));
-        await this.appendToMemoryStream(base64);
-      }
-      
-      await this.completeMemoryStream();
-    } else {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        onProgress?.(`Received ${value.length} bytes`);
-        
-        // Convert to base64
-        // @ts-ignore - btoa exists in React Native runtime
-        const base64 = btoa(String.fromCharCode(...value));
-        await instance.appendToBuffer(base64);
-      }
+  }
+
+  /**
+   * Stop publishing audio.
+   */
+  async stopPublishing(): Promise<void> {
+    this.ensureInitialized();
+
+    try {
+      logger.info('Stopping publishing');
+      await RNAudioStream.stopPublishing();
+      logger.logPlaybackEvent('publishingStop', {});
+    } catch (error) {
+      logger.error('Failed to stop publishing:', error);
+      throw error;
     }
-    
-    onProgress?.('Completed');
+  }
+
+  /**
+   * Get current publishing statistics.
+   */
+  async getPublishingStats(): Promise<PublishingStats> {
+    this.ensureInitialized();
+
+    try {
+      return await RNAudioStream.getPublishingStats() as unknown as PublishingStats;
+    } catch (error) {
+      logger.error('Failed to get publishing stats:', error);
+      throw error;
+    }
+  }
+
+  // ─── CarPlay & Android Auto ───
+
+  /**
+   * Configure media session for CarPlay/Android Auto.
+   */
+  async setMediaSessionConfig(config: MediaSessionConfig): Promise<void> {
+    this.ensureInitialized();
+    logger.info('Setting media session config', config);
+    await RNAudioStream.setMediaSessionConfig(config);
+  }
+
+  /**
+   * Get the media browse tree for CarPlay/Android Auto.
+   */
+  async getMediaBrowseTree(): Promise<MediaBrowseItem[]> {
+    this.ensureInitialized();
+    return await RNAudioStream.getMediaBrowseTree() as unknown as MediaBrowseItem[];
   }
 } 

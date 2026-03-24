@@ -1,13 +1,6 @@
 import { LogLevel } from './types';
 
-// TypeScript için console.time ve console.timeEnd fonksiyonlarını tanımla
-declare global {
-  interface Console {
-    time(label?: string): void;
-    timeEnd(label?: string): void;
-  }
-}
-
+// Removed declare global due to React Native Babel/Jest parsing issues
 export class Logger {
   private static instance: Logger;
   private logLevel: LogLevel = LogLevel.WARNING;
@@ -75,8 +68,8 @@ export class Logger {
   time(label: string): void {
     if (this.shouldLog(LogLevel.DEBUG)) {
       const tagLabel = `[${this.tag}] ${label}`;
-      if (typeof console.time === 'function') {
-        console.time(tagLabel);
+      if (typeof (console as any).time === 'function') {
+        (console as any).time(tagLabel);
       } else {
         this.timeLabels.set(tagLabel, Date.now());
         this.debug(`Timer started: ${tagLabel}`);
@@ -87,8 +80,8 @@ export class Logger {
   timeEnd(label: string): void {
     if (this.shouldLog(LogLevel.DEBUG)) {
       const tagLabel = `[${this.tag}] ${label}`;
-      if (typeof console.timeEnd === 'function') {
-        console.timeEnd(tagLabel);
+      if (typeof (console as any).timeEnd === 'function') {
+        (console as any).timeEnd(tagLabel);
       } else {
         const start = this.timeLabels.get(tagLabel);
         if (start) {

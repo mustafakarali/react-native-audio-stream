@@ -1,4 +1,27 @@
 {
-  "name": "AudioStreamExample",
-  "displayName": "Audio Stream Example"
-} 
+  "expo": {
+    "name": "AudioStreamExample",
+    "slug": "audio-stream-example",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.anonymous.audiostreamexample"
+    },
+    "plugins": [
+      "react-native-audio-stream"
+    ]
+  }
+}

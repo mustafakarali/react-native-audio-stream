@@ -24,6 +24,74 @@ The demo includes a clean Material Design UI with real-time statistics.
 
 ---
 
+### 8. WebSocket Audio Streaming
+
+```tsx
+import AudioStream from '@mustafakarali/react-native-audio-stream';
+
+export default function WebSocketPlayer() {
+  const audioStream = AudioStream.getInstance();
+
+  const connect = async () => {
+    await audioStream.initialize();
+    await audioStream.startWebSocketStream({
+      url: 'wss://voice.example.com/stream',
+      headers: { Authorization: 'Bearer token' },
+      sampleRate: 24000,
+      channels: 1,
+      autoReconnect: true,
+      reconnectAttempts: 5,
+    });
+  };
+
+  const sendCommand = async () => {
+    await audioStream.sendWebSocketMessage(
+      JSON.stringify({ type: 'start_recording', language: 'en' })
+    );
+  };
+
+  const disconnect = async () => {
+    await audioStream.stopWebSocketStream();
+  };
+}
+```
+
+---
+
+### 9. Realtime PCM Streaming
+
+```tsx
+import AudioStream from '@mustafakarali/react-native-audio-stream';
+
+export default function RealtimePCM() {
+  const audioStream = AudioStream.getInstance();
+
+  const startStream = async () => {
+    await audioStream.initialize();
+    await audioStream.startRealtimeStream({
+      sampleRate: 24000,
+      channels: 1,
+      autoPlay: true,
+    });
+
+    // Feed PCM data from your source (TTS API, VoIP, etc.)
+    // Each chunk is float32 PCM, base64-encoded
+    const chunk = getAudioChunkFromSource();
+    await audioStream.appendRealtimeData(chunk);
+  };
+
+  const stopStream = async () => {
+    await audioStream.completeRealtimeStream();
+  };
+
+  const checkStats = async () => {
+    const stats = await audioStream.getStreamingStats();
+    console.log('Bytes written:', stats.bytesWritten);
+    console.log('Active:', stats.isActive);
+  };
+}
+```
+
 ## Basic Usage Examples
 
 ### 1. Simple Audio Stream Player

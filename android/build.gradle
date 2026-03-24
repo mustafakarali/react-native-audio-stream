@@ -5,7 +5,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.2.1'
+        classpath 'com.android.tools.build:gradle:8.7.3'
         classpath 'com.facebook.react:react-native-gradle-plugin'
     }
 }
@@ -18,7 +18,6 @@ def safeExtGet(prop, fallback) {
 }
 
 react {
-    // The name of the generated `ReactPackage`
     reactNativeDir = rootProject.file("../node_modules/react-native")
     codegenDir = rootProject.file("../node_modules/@react-native/codegen")
     jsRootDir = rootProject.file("../src/")
@@ -28,48 +27,57 @@ react {
 
 android {
     namespace 'com.audiostream'
-    compileSdkVersion safeExtGet('compileSdkVersion', 34)
-    buildToolsVersion safeExtGet('buildToolsVersion', '34.0.0')
+    compileSdkVersion safeExtGet('compileSdkVersion', 35)
+    buildToolsVersion safeExtGet('buildToolsVersion', '35.0.0')
 
     defaultConfig {
-        minSdkVersion safeExtGet('minSdkVersion', 23)
-        targetSdkVersion safeExtGet('targetSdkVersion', 34)
+        minSdkVersion safeExtGet('minSdkVersion', 24)
+        targetSdkVersion safeExtGet('targetSdkVersion', 35)
         versionCode 1
-        versionName "1.0"
+        versionName "2.0.0"
     }
 
-    lintOptions {
+    lint {
         abortOnError false
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
 repositories {
     google()
     mavenCentral()
-    maven { url "https://www.jitpack.io" }
+    maven { url 'https://jitpack.io' } // For RootEncoder (RTMP/SRT)
 }
 
 dependencies {
     implementation 'com.facebook.react:react-native:+'
-    
-    // AndroidX Media3 dependencies (replacing ExoPlayer2)
-    implementation 'androidx.media3:media3-exoplayer:1.2.0'
-    implementation 'androidx.media3:media3-exoplayer-dash:1.2.0'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.2.0'
-    implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.2.0'
-    implementation 'androidx.media3:media3-exoplayer-rtsp:1.2.0'
-    implementation 'androidx.media3:media3-datasource-okhttp:1.2.0'
-    implementation 'androidx.media3:media3-common:1.2.0'
-    implementation 'androidx.media3:media3-session:1.2.0'
-    
-    // OkHttp for networking
+
+    // AndroidX Media3 1.5.1 (latest stable)
+    implementation 'androidx.media3:media3-exoplayer:1.5.1'
+    implementation 'androidx.media3:media3-exoplayer-dash:1.5.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.5.1'
+    implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.5.1'
+    implementation 'androidx.media3:media3-exoplayer-rtsp:1.5.1'
+    implementation 'androidx.media3:media3-datasource-okhttp:1.5.1'
+    implementation 'androidx.media3:media3-common:1.5.1'
+    implementation 'androidx.media3:media3-session:1.5.1'
+
+    // OkHttp 4.12.0 for networking
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    
-    // AndroidX Media for compatibility
+
+    // AndroidX Media compatibility
     implementation 'androidx.media:media:1.7.0'
-} 
+
+    // AndroidX Core for notifications (ForegroundService)
+    implementation 'androidx.core:core:1.15.0'
+
+    // ── Optional Transports (users add to their own app's build.gradle) ──
+    // RTMP/SRT: implementation 'com.github.pedroSG94.RootEncoder:rtmp:2.5.3'
+    // RTMP/SRT: implementation 'com.github.pedroSG94.RootEncoder:srt:2.5.3'
+    // WebRTC:   implementation 'org.webrtc:google-webrtc:1.0.32006'
+    // The native module detects these at runtime via Class.forName().
+}

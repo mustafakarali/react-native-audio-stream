@@ -1,44 +1,45 @@
-# Source files (only ship compiled)
-src/
-tsconfig.json
-tsconfig.build.json
-
-# Example
+# Ignore everything except what's needed for the published package
+node_modules/
 example/
-
-# Docs
 docs/
-
-# Config files
-.eslintrc.js
-.prettierrc.js
-jest.config.js
-jest.setup.js
-babel.config.js
-.release-it.json
-
-# Git
-.git/
-.gitignore
-
-# IDE
-.idea/
+.github/
 .vscode/
-*.iml
-
-# OS
-.DS_Store
-Thumbs.db
+.idea/
 
 # Build artifacts
 android/build/
 ios/build/
-*.log
+plugin/src/
+plugin/tsconfig.json
+plugin/build.js
 
-# Testing
-coverage/
+# Test and dev files
 __tests__/
+__fixtures__/
+__mocks__/
+coverage/
+jest.config.js
+jest.setup.js
 *.test.ts
 *.test.tsx
 *.spec.ts
-*.spec.tsx 
+*.spec.tsx
+
+# Config files
+.eslintrc.js
+.prettierrc.js
+tsconfig.json
+tsconfig.build.json
+.editorconfig
+.watchmanconfig
+
+# Documentation (README stays via files field)
+CHANGELOG.md
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+MIGRATION.md
+
+# Git
+.gitignore
+.gitattributes

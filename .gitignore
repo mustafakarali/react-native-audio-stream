@@ -50,6 +50,10 @@ coverage/
 
 # Example app
 example/node_modules/
-example/ios/Pods/
-example/android/build/
-example/android/app/build/ 
+example/android/
+example/ios/
+example/.expo/
+example/yarn.lock
+example/*.png
+example/*.txt
+example/*.xml

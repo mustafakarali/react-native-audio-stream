@@ -10,65 +10,66 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'yarn'
-      
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      
+
       - name: Run ESLint
         run: yarn lint
-      
+
       - name: Check TypeScript
         run: yarn typescript
 
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'yarn'
-      
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      
-      - name: Run tests
+
+      - name: Run tests with coverage
         run: yarn test --coverage
-      
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage/lcov.info
+          fail_ci_if_error: false
 
   build-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'yarn'
-      
+
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'
-      
+          java-version: '17'
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      
+
       - name: Build Android
         working-directory: ./android
         run: ./gradlew assembleRelease
@@ -76,21 +77,21 @@ jobs:
   build-ios:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'yarn'
-      
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      
+
       - name: Install pods
         working-directory: ./example/ios
         run: pod install
-      
+
       - name: Build iOS
         working-directory: ./example/ios
-        run: xcodebuild -workspace AudioStreamExample.xcworkspace -scheme AudioStreamExample -configuration Release -sdk iphonesimulator -derivedDataPath build 
+        run: xcodebuild -workspace AudioStreamExample.xcworkspace -scheme AudioStreamExample -configuration Release -sdk iphonesimulator -derivedDataPath build

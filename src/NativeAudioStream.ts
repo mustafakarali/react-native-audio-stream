@@ -48,6 +48,31 @@ export interface Spec extends TurboModule {
   useQueuePlayer(enable: boolean): Promise<boolean>;
   createRoutePickerView(): Promise<number>;
   
+  // Realtime PCM streaming (both platforms)
+  startRealtimeStream(config: Object): Promise<boolean>;
+  appendRealtimeData(base64Data: string): Promise<boolean>;
+  completeRealtimeStream(): Promise<boolean>;
+  getStreamingStats(): Promise<Object>;
+  
+  // WebSocket streaming (both platforms)
+  startWebSocketStream(config: Object): Promise<boolean>;
+  stopWebSocketStream(): Promise<boolean>;
+  sendWebSocketMessage(data: string): Promise<boolean>;
+
+  // Playlist & Queue (both platforms)
+  setPlaylist(items: ReadonlyArray<Object>): Promise<boolean>;
+  addToQueue(item: Object, position: number): Promise<boolean>;
+  removeFromQueue(index: number): Promise<boolean>;
+  moveInQueue(fromIndex: number, toIndex: number): Promise<boolean>;
+  skipToNext(): Promise<boolean>;
+  skipToPrevious(): Promise<boolean>;
+  skipToIndex(index: number): Promise<boolean>;
+  setShuffle(enabled: boolean): Promise<boolean>;
+  setRepeatMode(mode: string): Promise<boolean>;
+  getPlaylistState(): Promise<Object>;
+  getQueue(): Promise<ReadonlyArray<Object>>;
+  clearQueue(): Promise<boolean>;
+  
   // Event emitter methods
   addListener(eventName: string): void;
   removeListeners(count: number): void;

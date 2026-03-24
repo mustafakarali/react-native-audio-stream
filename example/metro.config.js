@@ -1,22 +1,34 @@
+const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
-const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 
-const defaultConfig = getDefaultConfig(__dirname);
+const projectRoot = __dirname;
+const workspaceRoot = path.resolve(projectRoot, '..');
 
-// Path to the local package
-const packagePath = path.resolve(__dirname, '..');
+const config = getDefaultConfig(projectRoot);
 
-const config = {
-  watchFolders: [packagePath],
-  resolver: {
-    nodeModulesPaths: [
-      path.resolve(__dirname, 'node_modules'),
-      path.resolve(packagePath, 'node_modules'),
-    ],
-    extraNodeModules: {
-      'react-native-audio-stream': packagePath,
-    },
+// Watch only the library src/ directory (not entire workspace — Windows watcher limit)
+config.watchFolders = [path.resolve(workspaceRoot, 'src')];
+
+// Resolve from project root + workspace root
+config.resolver.nodeModulesPaths = [
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(workspaceRoot, 'node_modules'),
+];
+
+// Force resolving react-native to example's node_modules
+config.resolver.disableHierarchicalLookup = true;
+
+// Windows file watcher workaround
+config.watcher = {
+  healthCheck: {
+    enabled: true,
+    interval: 30000,
+    timeout: 5000,
+    filePrefix: '.metro-health-check',
+  },
+  watchman: {
+    deferStates: ['hg.update'],
   },
 };
 
-module.exports = mergeConfig(defaultConfig, config); 
+module.exports = config;

@@ -214,6 +214,95 @@ Set network priority for streaming.
 **Parameters:**
 - `priority`: Network priority level
 
+### Realtime PCM Streaming (Both Platforms)
+
+#### `startRealtimeStream(config?: AudioStreamConfig): Promise<void>`
+
+Start a real-time PCM streaming session for byte-by-byte audio playback.
+
+**Implementation:**
+- iOS: `AVAudioEngine` + `AVAudioPlayerNode`
+- Android: `RealtimeStreamingDataSource` + `PipedInputStream` + ExoPlayer
+
+```typescript
+await audioStream.startRealtimeStream({
+  sampleRate: 24000,
+  channels: 1,
+  autoPlay: true,
+});
+```
+
+#### `appendRealtimeData(base64Data: string): Promise<void>`
+
+Append PCM audio data (float32, base64 encoded) to the active realtime stream.
+
+#### `completeRealtimeStream(): Promise<void>`
+
+Signal that realtime streaming is complete. Flushes remaining buffers.
+
+#### `getStreamingStats(): Promise<StreamingStats>`
+
+Get real-time streaming statistics.
+
+**Returns:**
+```typescript
+{
+  bytesWritten: number;
+  bytesRead: number;
+  isActive: boolean;
+  isReady: boolean;
+}
+```
+
+### WebSocket Streaming (Both Platforms)
+
+#### `startWebSocketStream(config: WebSocketStreamConfig): Promise<void>`
+
+Start a WebSocket audio stream. Binary frames are played as audio, text frames emitted as events.
+
+**Implementation:**
+- iOS: `NSURLSessionWebSocketTask`
+- Android: OkHttp `WebSocket`
+
+```typescript
+await audioStream.startWebSocketStream({
+  url: 'wss://voice.example.com/stream',
+  headers: { 'Authorization': 'Bearer token' },
+  protocols: ['audio-stream'],
+  sampleRate: 24000,
+  channels: 1,
+  autoPlay: true,
+  autoReconnect: true,
+  reconnectAttempts: 5,
+  reconnectDelay: 1000,
+});
+```
+
+#### `stopWebSocketStream(): Promise<void>`
+
+Stop the active WebSocket stream and close the connection.
+
+#### `sendWebSocketMessage(data: string): Promise<void>`
+
+Send a text message to the WebSocket server (bi-directional communication).
+
+### WebSocketStreamConfig
+
+```typescript
+interface WebSocketStreamConfig {
+  url: string;                    // ws:// or wss://
+  protocols?: string[];           // Sub-protocols
+  headers?: Record<string, string>;
+  audioFormat?: AudioFormat;      // Default: 'pcm'
+  sampleRate?: number;            // Default: 44100
+  channels?: number;              // Default: 1
+  autoPlay?: boolean;             // Default: true
+  autoReconnect?: boolean;        // Default: true
+  reconnectAttempts?: number;     // Default: from global config
+  reconnectDelay?: number;        // Default: from global config
+}
+```
+
 ## Types
 
 ### AudioStreamConfig
@@ -398,6 +487,25 @@ AudioStream.addEventListener('onNetworkStateChange', (isConnected: boolean) => {
 });
 ```
 
+### onWebSocketOpen
+Fired when a WebSocket connection is established.
+
+### onWebSocketMessage
+Fired when a text message is received from the WebSocket server.
+
+```typescript
+AudioStream.addEventListener('onWebSocketMessage', (data: { data: string }) => {
+  const message = JSON.parse(data.data);
+  console.log('Server message:', message);
+});
+```
+
+### onWebSocketClose
+Fired when the WebSocket connection is closed.
+
+### onWebSocketError
+Fired when a WebSocket connection error occurs.
+
 ## Error Handling
 
 ### Error Codes
@@ -411,7 +519,9 @@ const ErrorCodes = {
   BUFFER_TIMEOUT: 'BUFFER_TIMEOUT',
   INITIALIZATION_ERROR: 'INITIALIZATION_ERROR',
   INVALID_STATE: 'INVALID_STATE',
+  INVALID_URL: 'INVALID_URL',
   CACHE_ERROR: 'CACHE_ERROR',
+  WEBSOCKET_ERROR: 'WEBSOCKET_ERROR',
   UNKNOWN_ERROR: 'UNKNOWN_ERROR',
 };
 ```
